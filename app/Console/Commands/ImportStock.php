@@ -3,13 +3,10 @@
 namespace App\Console\Commands;
 
 use App\Imports\StockImport;
-use App\Models\ResEf2016;
-use App\Models\ResEf2017;
-use App\Models\ResEf2018;
-use App\Models\ResGd2016;
-use App\Models\ResGd2017;
-use App\Models\ResGd2018;
+use App\Models\DynamicStock;
 use Illuminate\Console\Command;
+use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Facades\DB;
 //use Maatwebsite\Excel\Excel;
 use Maatwebsite\Excel\Facades\Excel;
 
@@ -26,21 +23,17 @@ class ImportStock extends Command
         $file  = $this->argument('file');
         $table = strtoupper($this->argument('table'));
 
-        $model = match ($table) {
-            'RES_EF_2016' => ResEf2016::class,
-            'RES_GD_2016' => ResGd2016::class,
-            'RES_EF_2017' => ResEf2017::class,
-            'RES_GD_2017' => ResGd2017::class,
-            'RES_EF_2018' => ResEf2018::class,
-            'RES_GD_2018' => ResGd2018::class,
-            default       => null,
-        };
-        if (!$model) { $this->error('Table inconnue'); return 1; }
+        if (!Schema::hasTable($table)) {
+            $this->error("Table '$table' does not exist. Please run 'php artisan stock:create-table $table' first.");
+            return 1;
+        }
 
-        if ($this->option('truncate')) { $model::truncate(); }
+        if ($this->option('truncate')) {
+            DB::table($table)->truncate();
+        }
 
-//        Excel::import(new StockImport($model), $file);
-        Excel::import(new StockImport($model), is_file($file) ? $file : storage_path('app/'.$file));
+//        Excel::import(new StockImport($table), $file);
+        Excel::import(new StockImport($table), is_file($file) ? $file : storage_path('app/'.$file));
         $this->info("Import OK vers $table");
         return 0;
     }

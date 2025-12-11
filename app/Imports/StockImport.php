@@ -10,15 +10,15 @@ use Maatwebsite\Excel\Concerns\WithChunkReading;
 
 class StockImport implements ToModel, WithHeadingRow, SkipsEmptyRows, WithChunkReading
 {
-    /** @var class-string<\Illuminate\Database\Eloquent\Model> */
-    protected string $modelClass;
+    /** @var string */
+    protected string $tableName;
 
     /**
-     * @param class-string<\Illuminate\Database\Eloquent\Model> $modelClass
+     * @param string $tableName
      */
-    public function __construct(string $modelClass)
+    public function __construct(string $tableName)
     {
-        $this->modelClass = $modelClass;
+        $this->tableName = $tableName;
     }
 
     public function headingRow(): int
@@ -58,7 +58,8 @@ class StockImport implements ToModel, WithHeadingRow, SkipsEmptyRows, WithChunkR
         // (ex: garder uniquement numériques)
         // if (!ctype_digit($article)) return null;
 //        dd($row, $entree, $sortie, $finale, $pump, $valeur);
-        $model = new $this->modelClass();
+        $model = new \App\Models\DynamicStock();
+        $model->setTable($this->tableName);
         $model->article      = $article;
         $model->designation  = $designation;
         $model->initial      = $initial;
