@@ -81,11 +81,27 @@
         <div class="p-8 md:w-1/2">
             <form id="importForm" action="{{ route('import.store') }}" method="POST" enctype="multipart/form-data">
                 @csrf
-                <div class="mb-6">
-                    <label for="table_name" class="block text-gray-700 font-bold mb-2">Nom de la Table Cible</label>
-                    <input type="text" name="table_name" id="table_name" class="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500" placeholder="Ex: RES_TEST_2025" required value="{{ old('table_name') }}">
-                    <p class="text-xs text-gray-500 mt-1">Si la table existe et contient des données, l'import sera bloqué.</p>
+                <div class="mb-6 grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div>
+                        <label for="annee" class="block text-gray-700 font-bold mb-2">Exercice</label>
+                        <input type="number" name="annee" id="annee" class="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500" placeholder="Ex: 2025" required value="{{ old('annee', date('Y')) }}" min="2000" max="2100">
+                    </div>
+                    <div>
+                        <label for="programme" class="block text-gray-700 font-bold mb-2">Programme</label>
+                        <select name="programme" id="programme" class="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                            <option value="EF" {{ old('programme') == 'EF' ? 'selected' : '' }}>EF (Etat Final)</option>
+                            <option value="GD" {{ old('programme') == 'GD' ? 'selected' : '' }}>GD (Générateur Données)</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label for="reseau" class="block text-gray-700 font-bold mb-2">Réseau</label>
+                        <select name="reseau" id="reseau" class="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                            <option value="BUS" {{ old('reseau') == 'BUS' ? 'selected' : '' }}>BUS</option>
+                            <option value="FERRE" {{ old('reseau') == 'FERRE' ? 'selected' : '' }}>FERRÉ</option>
+                        </select>
+                    </div>
                 </div>
+                <p class="text-xs text-gray-500 mb-6 -mt-4">Nom généré : <strong>RES_[PROGRAMME]_[RESEAU]_[ANNEE]</strong> (ex: RES_EF_BUS_2025). Si la table existe et contient des données, l'import sera bloqué.</p>
 
                 <div class="mb-6">
                     <label for="file" class="block text-gray-700 font-bold mb-2">Fichier Excel</label>

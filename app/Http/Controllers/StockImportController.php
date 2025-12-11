@@ -26,11 +26,17 @@ class StockImportController extends Controller
     public function store(Request $request)
     {
         $request->validate([
-            'table_name' => 'required|string|alpha_dash|max:64',
+            'annee' => 'required|numeric|digits:4',
+            'programme' => 'required|string|in:EF,GD',
+            'reseau' => 'required|string|in:BUS,FERRE',
             'file' => 'required|file|mimes:xlsx,xls,csv',
         ]);
 
-        $tableName = strtoupper($request->input('table_name'));
+        $annee = $request->input('annee');
+        $programme = strtoupper($request->input('programme'));
+        $reseau = strtoupper($request->input('reseau'));
+
+        $tableName = "RES_{$programme}_{$reseau}_{$annee}";
         $file = $request->file('file');
 
         // 1. Create Table if it doesn't exist
