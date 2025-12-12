@@ -2,13 +2,13 @@
 
 @section('content')
 <div class="container mx-auto">
-    <h1 class="text-3xl font-bold mb-8 text-indigo-700">Etats Disponibles</h1>
+    <h1 class="text-3xl font-bold mb-8 text-green-700">Etats Disponibles</h1>
 
     @if (count($groupedTables) > 0)
         @foreach ($groupedTables as $annee => $reseaux)
             <div class="mb-10">
-                <h2 class="text-2xl font-bold text-gray-800 border-b-2 border-indigo-200 pb-2 mb-6 flex items-center">
-                    <span class="bg-indigo-600 text-white rounded-lg px-3 py-1 mr-3 text-lg">{{ $annee }}</span>
+                <h2 class="text-2xl font-bold text-gray-800 border-b-2 border-yellow-200 pb-2 mb-6 flex items-center">
+                    <span class="bg-green-600 text-white rounded-lg px-3 py-1 mr-3 text-lg">{{ $annee }}</span>
                     <span>Exercice {{ $annee }}</span>
                 </h2>
 
@@ -32,7 +32,7 @@
                                 @foreach ($tables as $table)
                                     <li class="px-6 py-4 hover:bg-gray-50 flex justify-between items-center">
                                         <div>
-                                            <a href="{{ route('consultation.show', $table['name']) }}" class="text-sm font-medium text-indigo-600 truncate hover:text-indigo-800 hover:underline" title="{{ $table['name'] }}">
+                                            <a href="{{ route('consultation.show', $table['name']) }}" class="text-sm font-medium text-green-600 truncate hover:text-green-800 hover:underline" title="{{ $table['name'] }}">
                                                 {{ $table['name'] }}
                                             </a>
                                             <p class="text-xs text-gray-500 mt-0.5">
@@ -59,7 +59,7 @@
             <h3 class="mt-2 text-sm font-medium text-gray-900">Aucune donnée</h3>
             <p class="mt-1 text-sm text-gray-500">Aucune table de données trouvée. Commencez par importer un fichier.</p>
             <div class="mt-6">
-                <a href="{{ route('import.index') }}" class="inline-flex items-center px-4 py-2 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500">
+                <a href="{{ route('import.index') }}" class="inline-flex items-center px-4 py-2 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500">
                     <svg class="-ml-1 mr-2 h-5 w-5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
                         <path fill-rule="evenodd" d="M10 3a1 1 0 011 1v5h5a1 1 0 110 2h-5v5a1 1 0 11-2 0v-5H4a1 1 0 110-2h5V4a1 1 0 011-1z" clip-rule="evenodd" />
                     </svg>

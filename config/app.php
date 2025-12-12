@@ -1,4 +1,4 @@
-gd<?php
+<?php
 
 return [
 

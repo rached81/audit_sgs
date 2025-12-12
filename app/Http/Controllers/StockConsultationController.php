@@ -96,10 +96,17 @@ class StockConsultationController extends Controller
      * @param  string  $tableName
      * @return \Illuminate\Http\Response
      */
+    /**
+     * Display the specified resource.
+     *
+     * @param  string  $tableName
+     * @return \Illuminate\Http\Response
+     */
     public function show(Request $request, $tableName)
     {
-        // Security check: ensure table exists and strictly follows our convention
-        // You might want to be more strict here to prevent SQL injection or viewing sensitive tables
+
+    
+        // Security check
         if (!Schema::hasTable($tableName) || stripos($tableName, 'RES_') !== 0) {
             abort(404, "Table not found or access denied.");
         }
@@ -107,7 +114,22 @@ class StockConsultationController extends Controller
         $columns = Schema::getColumnListing($tableName);
         $query = DB::table($tableName);
 
-        // Search functionality
+        // Advanced Filtering
+        if ($filters = $request->input('filters')) {
+            foreach ($filters as $column => $value) {
+                if (($value !== null && $value !== '') && in_array($column, $columns)) {
+                    // Exact match for numerical/specific columns
+                    if (in_array(strtoupper($column), ['PUMP', 'INITIAL','ENTREE','SORTIE','FINALE','VALEUR'])) {
+                        // Use whereRaw with +0 to force numeric comparison (handles 0 vs 0.000)
+                        $query->whereRaw("$column + 0 = ?", [$value]);
+                    } else {
+                        $query->where($column, 'LIKE', "%{$value}%");
+                    }
+                }
+            }
+        }
+        
+        // Global Search
         if ($search = $request->input('search')) {
             $query->where(function($q) use ($columns, $search) {
                 foreach ($columns as $column) {
@@ -116,14 +138,38 @@ class StockConsultationController extends Controller
             });
         }
 
+        // Grouping Logic - Restricted to 'GD' tables
+        $isGdTable = stripos($tableName, 'GD') !== false;
+        
+        if ($isGdTable && $request->boolean('group_by_article') && in_array('ARTICLE', $columns)) {
+            $selects = ['ARTICLE'];
+            
+            if (in_array('DESIGNATION', $columns)) $selects[] = DB::raw('MAX(DESIGNATION) as DESIGNATION');
+            
+            $sumColumns = ['INITIAL', 'ENTREE', 'SORTIE', 'FINALE', 'VALEUR'];
+            foreach ($sumColumns as $col) {
+                if (in_array($col, $columns)) {
+                    $selects[] = DB::raw("SUM($col) as $col");
+                }
+            }
+            
+            if (in_array('PUMP', $columns)) {
+                 $selects[] = DB::raw('MAX(PUMP) as PUMP');
+            }
+
+            $query->select($selects)->groupBy('ARTICLE');
+        }
+
+
         // Pagination
         $rows = $query->paginate(50)->withQueryString();
 
-        return view('consultation.show', compact('tableName', 'rows', 'columns'));
+        return view('consultation.show', compact('tableName', 'rows', 'columns', 'isGdTable'));
     }
 
     public function export(Request $request, $tableName)
     {
+       
         if (!Schema::hasTable($tableName) || stripos($tableName, 'RES_') !== 0) {
             abort(404, "Table not found or access denied.");
         }
@@ -131,7 +177,22 @@ class StockConsultationController extends Controller
         $columns = Schema::getColumnListing($tableName);
         $query = DB::table($tableName);
 
-        // Apply same search if present 
+        // Advanced Filtering
+        if ($filters = $request->input('filters')) {
+            foreach ($filters as $column => $value) {
+               if (($value !== null && $value !== '') && in_array($column, $columns)) {
+                    // Exact match for numerical/specific columns
+                    if (in_array(strtoupper($column), ['PUMP', 'INITIAL', 'ENTREE', 'SORTIE', 'FINALE', 'VALEUR'])) {
+                        // Use whereRaw with +0 to force numeric comparison
+                        $query->whereRaw("$column + 0 = ?", [$value]);
+                    } else {
+                        $query->where($column, 'LIKE', "%{$value}%");
+                    }
+                }
+            }
+        }
+
+        // Global Search
         if ($search = $request->input('search')) {
             $query->where(function($q) use ($columns, $search) {
                 foreach ($columns as $column) {
@@ -140,6 +201,27 @@ class StockConsultationController extends Controller
             });
         }
         
+        // Grouping Logic - Restricted to 'GD' tables
+        $isGdTable = stripos($tableName, 'GD') !== false;
+
+        if ($isGdTable && $request->boolean('group_by_article') && in_array('ARTICLE', $columns)) {
+            $selects = ['ARTICLE'];
+            
+            if (in_array('DESIGNATION', $columns)) $selects[] = DB::raw('MAX(DESIGNATION) as DESIGNATION');
+            
+            $sumColumns = ['INITIAL', 'ENTREE', 'SORTIE', 'FINALE', 'VALEUR'];
+            foreach ($sumColumns as $col) {
+                if (in_array($col, $columns)) {
+                    $selects[] = DB::raw("SUM($col) as $col");
+                }
+            }
+             if (in_array('PUMP', $columns)) {
+                 $selects[] = DB::raw('MAX(PUMP) as PUMP');
+            }
+
+            $query->select($selects)->groupBy('ARTICLE');
+        }
+
         return Excel::download(new StockExport($query, $columns), "{$tableName}.xlsx");
     }
 }

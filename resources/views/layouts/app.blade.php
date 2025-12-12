@@ -26,7 +26,7 @@
     </style>
 </head>
 <body class="antialiased bg-gray-50 min-h-screen text-gray-800">
-    <nav class="bg-indigo-700 text-white shadow-lg">
+    <nav class="bg-green-700 text-white shadow-lg">
         <div class="max-w-6xl mx-auto px-4">
             <div class="flex justify-between">
                 <div class="flex space-x-7">
@@ -38,8 +38,9 @@
                     </div>
                     <!-- Primary Navbar items -->
                     <div class="hidden md:flex items-center space-x-1">
-                        <a href="{{ route('import.index') }}" class="py-4 px-2 {{ request()->routeIs('import.index') ? 'border-b-4 border-indigo-300 font-semibold' : 'text-indigo-200 hover:text-white transition duration-300' }}">Importation</a>
-                        <a href="{{ route('consultation.index') }}" class="py-4 px-2 {{ request()->routeIs('consultation.index') ? 'border-b-4 border-indigo-300 font-semibold' : 'text-indigo-200 hover:text-white transition duration-300' }}">Consultation</a>
+                        <a href="{{ route('import.index') }}" class="py-4 px-2 {{ request()->routeIs('import.index') ? 'border-b-4 border-yellow-400 font-semibold' : 'text-green-100 hover:text-white transition duration-300' }}">Importation</a>
+                        <a href="{{ route('consultation.index') }}" class="py-4 px-2 {{ request()->routeIs('consultation.index') ? 'border-b-4 border-yellow-400 font-semibold' : 'text-green-100 hover:text-white transition duration-300' }}">Consultation</a>
+                        <a href="{{ route('audit.index') }}" class="py-4 px-2 {{ request()->routeIs('audit.index') ? 'border-b-4 border-yellow-400 font-semibold' : 'text-green-100 hover:text-white transition duration-300' }}">Audit</a>
                     </div>
                 </div>
             </div>
