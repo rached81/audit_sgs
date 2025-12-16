@@ -41,56 +41,84 @@ class StockAuditController extends Controller
             return back()->withErrors(['tables' => "La table GD '$gdTable' est introuvable."]);
         }
 
-        // --- Logic Selection based on Type ---
-        $selectEF = "";
-        $selectGD = "";
-        $whereClause = "";
-        $orderBy = "ABS(ecart) DESC";
+        // --- Ecart Calculation Expression ---
+        $ecartExpr = "0";
+        $whereClause = "1=1"; 
 
         if ($type === 'initial') {
-            // Initial Comparison (Valeur Initiale)
-            // EF: INITIAL * PUMP
-            // GD: SUM(INITIAL) * MAX(PUMP)
-            $selectEF = "ARTICLE, DESIGNATION as design, (INITIAL * PUMP) as col_ef";
-            $selectGD = "ARTICLE, (SUM(INITIAL) * MAX(PUMP)) as col_gd";
-            $whereClause = "ABS(ef.col_ef - COALESCE(gd.col_gd, 0)) > 0.0005";
+            // Ecart = (EF_INITIAL * EF_PUMP) - (GD_SUM_INITIAL * GD_MAX_PUMP)
+            $ecartExpr = "(ef.INITIAL * ef.PUMP) - (COALESCE(gd.gd_initial,0) * COALESCE(gd.gd_pump,0))";
+            $whereClause = "ABS($ecartExpr) > 0.005";
         } elseif ($type === 'pump') {
-            // PUMP Comparison (GD uses MAX because PUMP is unique per article)
-            $selectEF = "ARTICLE, DESIGNATION as design, PUMP as col_ef";
-            $selectGD = "ARTICLE, MAX(PUMP) as col_gd";
-            $whereClause = "ABS(ef.col_ef - COALESCE(gd.col_gd, 0)) > 0.0005";
+             // Ecart = EF_PUMP - GD_MAX_PUMP
+            $ecartExpr = "ef.PUMP - COALESCE(gd.gd_pump,0)";
+            $whereClause = "ABS($ecartExpr) > 0.0005";
         } else {
-            // Default: Finale & Valeur Comparison
-            $selectEF = "ARTICLE, DESIGNATION as design, FINALE as ef_finale, VALEUR as col_ef";
-            $selectGD = "ARTICLE, SUM(FINALE) as gd_finale, SUM(VALEUR) as col_gd";
-            // Check both Finale and Valeur differences
-            $whereClause = "(ABS(ef.col_ef - COALESCE(gd.col_gd, 0)) > 0.0005 OR ABS(ef.ef_finale - COALESCE(gd.gd_finale, 0)) > 0.001)";
+            // Default: Valeur
+            // Ecart = EF_VALEUR - GD_SUM_VALEUR
+            $ecartExpr = "ef.VALEUR - COALESCE(gd.gd_valeur,0)";
+            $whereClause = "(ABS($ecartExpr) > 0.005 OR ABS(ef.FINALE - COALESCE(gd.gd_finale, 0)) > 0.001)";
         }
 
-        // Construct Dynamic Query
+        // Construct Dynamic Query to fetch ALL columns
         $sql = "
             SELECT
                 ef.ARTICLE,
-                ef.design as designation,
-                " . ($type === 'valeur' ? 'ef.ef_finale, gd.gd_finale,' : '') . "
-                ROUND(ef.col_ef, 3) AS val_ef,
-                ROUND(COALESCE(gd.col_gd, 0), 3) AS val_gd,
-                ROUND(ef.col_ef - COALESCE(gd.col_gd, 0), 3) AS ecart
+                ef.DESIGNATION as designation,
+                
+                -- EF Columns
+                ef.INITIAL as ef_initial,
+                ef.ENTREE as ef_entree,
+                ef.SORTIE as ef_sortie,
+                ef.FINALE as ef_finale,
+                ef.PUMP as ef_pump,
+                ef.VALEUR as ef_valeur,
+
+                -- GD Columns
+                COALESCE(gd.gd_initial, 0) as gd_initial,
+                COALESCE(gd.gd_entree, 0) as gd_entree,
+                COALESCE(gd.gd_sortie, 0) as gd_sortie,
+                COALESCE(gd.gd_finale, 0) as gd_finale,
+                COALESCE(gd.gd_pump, 0) as gd_pump,
+                COALESCE(gd.gd_valeur, 0) as gd_valeur,
+
+                -- Calculated Ecart
+                ROUND($ecartExpr, 3) AS ecart
+
             FROM
-                ( SELECT $selectEF FROM $efTable ) AS ef
+                $efTable AS ef
             LEFT JOIN
-                ( SELECT $selectGD FROM $gdTable GROUP BY ARTICLE ) AS gd 
-            ON gd.ARTICLE = ef.ARTICLE
-            WHERE $whereClause
-            ORDER BY $orderBy
+                (
+                    SELECT
+                        ARTICLE,
+                        SUM(INITIAL) as gd_initial,
+                        SUM(ENTREE) as gd_entree,
+                        SUM(SORTIE) as gd_sortie,
+                        SUM(FINALE) as gd_finale,
+                        MAX(PUMP) as gd_pump,
+                        SUM(VALEUR) as gd_valeur
+                    FROM
+                        $gdTable
+                    GROUP BY
+                        ARTICLE
+                ) AS gd ON gd.ARTICLE = ef.ARTICLE
+            WHERE
+               $whereClause
+            ORDER BY
+                ABS(ecart) DESC
         ";
+        
+        // Note: Optimized to query tables directly instead of subquery for EF, as EF is already unique by Article usually? 
+        // Or if EF needs aggregation, we assume EF is already 'Etat Final' one row per article. 
+        // The previous code had `SELECT * FROM efTable` inside a subquery, which is redundant if we alias the table directly.
+        // Assuming EF table has unique ARTICLE key.
 
         $results = DB::select($sql);
 
         // Calculate Total Ecart
         $totalEcart = array_sum(array_column($results, 'ecart'));
 
-        return view('audit.results', compact('results', 'annee', 'reseau', 'efTable', 'gdTable', 'totalEcart', 'type'));
+        return view('audit.index', compact('results', 'annee', 'reseau', 'efTable', 'gdTable', 'totalEcart', 'type'));
     }
 
     public function export(Request $request)
@@ -112,45 +140,75 @@ class StockAuditController extends Controller
              return back()->withErrors(['tables' => "Tables introuvables pour l'export."]);
         }
 
-         // Reuse Logic (refactor ideal, but copying for safety/speed now)
-         $selectEF = "";
-         $selectGD = "";
-         $whereClause = "";
-         $orderBy = "ABS(ecart) DESC";
- 
-         if ($type === 'initial') {
-             $selectEF = "ARTICLE, DESIGNATION as design, (INITIAL * PUMP) as col_ef";
-             $selectGD = "ARTICLE, (SUM(INITIAL) * MAX(PUMP)) as col_gd";
-             $whereClause = "ABS(ef.col_ef - COALESCE(gd.col_gd, 0)) > 0.0005";
-         } elseif ($type === 'pump') {
-             $selectEF = "ARTICLE, DESIGNATION as design, PUMP as col_ef";
-             $selectGD = "ARTICLE, MAX(PUMP) as col_gd";
-             $whereClause = "ABS(ef.col_ef - COALESCE(gd.col_gd, 0)) > 0.0005";
-         } else {
-             $selectEF = "ARTICLE, DESIGNATION as design, FINALE as ef_finale, VALEUR as col_ef";
-             $selectGD = "ARTICLE, SUM(FINALE) as gd_finale, SUM(VALEUR) as col_gd";
-             $whereClause = "(ABS(ef.col_ef - COALESCE(gd.col_gd, 0)) > 0.0005 OR ABS(ef.ef_finale - COALESCE(gd.gd_finale, 0)) > 0.001)";
-         }
- 
-         $sql = "
-             SELECT
-                 ef.ARTICLE,
-                 ef.design as designation,
-                 " . ($type === 'valeur' ? 'ef.ef_finale, gd.gd_finale,' : '') . "
-                 ROUND(ef.col_ef, 3) AS val_ef,
-                 ROUND(COALESCE(gd.col_gd, 0), 3) AS val_gd,
-                 ROUND(ef.col_ef - COALESCE(gd.col_gd, 0), 3) AS ecart
-             FROM
-                 ( SELECT $selectEF FROM $efTable ) AS ef
-             LEFT JOIN
-                 ( SELECT $selectGD FROM $gdTable GROUP BY ARTICLE ) AS gd 
-             ON gd.ARTICLE = ef.ARTICLE
-             WHERE $whereClause
-             ORDER BY $orderBy
-         ";
- 
-         $results = DB::select($sql);
+        // --- Ecart Calculation Expression (Mirrors compare method) ---
+        $ecartExpr = "0";
+        $whereClause = "1=1"; 
 
-         return \Maatwebsite\Excel\Facades\Excel::download(new \App\Exports\AuditExport($results, $type, $efTable, $gdTable), "audit_{$reseau}_{$annee}_{$type}.xlsx");
+        if ($type === 'initial') {
+            // Ecart = (EF_INITIAL * EF_PUMP) - (GD_SUM_INITIAL * GD_MAX_PUMP)
+            $ecartExpr = "(ef.INITIAL * ef.PUMP) - (COALESCE(gd.gd_initial,0) * COALESCE(gd.gd_pump,0))";
+            $whereClause = "ABS($ecartExpr) > 0.005";
+        } elseif ($type === 'pump') {
+             // Ecart = EF_PUMP - GD_MAX_PUMP
+            $ecartExpr = "ef.PUMP - COALESCE(gd.gd_pump,0)";
+            $whereClause = "ABS($ecartExpr) > 0.0005";
+        } else {
+            // Default: Valeur
+            // Ecart = EF_VALEUR - GD_SUM_VALEUR
+            $ecartExpr = "ef.VALEUR - COALESCE(gd.gd_valeur,0)";
+            $whereClause = "(ABS($ecartExpr) > 0.005 OR ABS(ef.FINALE - COALESCE(gd.gd_finale, 0)) > 0.001)";
+        }
+
+        // Construct Dynamic Query to fetch ALL columns (Mirrors compare method)
+        $sql = "
+            SELECT
+                ef.ARTICLE,
+                ef.DESIGNATION as designation,
+                
+                -- EF Columns
+                ef.INITIAL as ef_initial,
+                ef.ENTREE as ef_entree,
+                ef.SORTIE as ef_sortie,
+                ef.FINALE as ef_finale,
+                ef.PUMP as ef_pump,
+                ef.VALEUR as ef_valeur,
+
+                -- GD Columns
+                COALESCE(gd.gd_initial, 0) as gd_initial,
+                COALESCE(gd.gd_entree, 0) as gd_entree,
+                COALESCE(gd.gd_sortie, 0) as gd_sortie,
+                COALESCE(gd.gd_finale, 0) as gd_finale,
+                COALESCE(gd.gd_pump, 0) as gd_pump,
+                COALESCE(gd.gd_valeur, 0) as gd_valeur,
+
+                -- Calculated Ecart
+                ROUND($ecartExpr, 3) AS ecart
+
+            FROM
+                $efTable AS ef
+            LEFT JOIN
+                (
+                    SELECT
+                        ARTICLE,
+                        SUM(INITIAL) as gd_initial,
+                        SUM(ENTREE) as gd_entree,
+                        SUM(SORTIE) as gd_sortie,
+                        SUM(FINALE) as gd_finale,
+                        MAX(PUMP) as gd_pump,
+                        SUM(VALEUR) as gd_valeur
+                    FROM
+                        $gdTable
+                    GROUP BY
+                        ARTICLE
+                ) AS gd ON gd.ARTICLE = ef.ARTICLE
+            WHERE
+               $whereClause
+            ORDER BY
+                ABS(ecart) DESC
+        ";
+
+        $results = DB::select($sql);
+
+        return \Maatwebsite\Excel\Facades\Excel::download(new \App\Exports\AuditExport($results, $type, $efTable, $gdTable), "audit_{$reseau}_{$annee}_{$type}.xlsx");
     }
 }

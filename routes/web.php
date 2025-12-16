@@ -1,19 +1,46 @@
 <?php
 
 use Illuminate\Support\Facades\Route;
+use App\Http\Controllers\StockImportController;
+use App\Http\Controllers\StockConsultationController;
+use App\Http\Controllers\StockAuditController;
+use App\Http\Controllers\AuthController;
+use App\Http\Controllers\UserController;
 
+/*
+|--------------------------------------------------------------------------
+| Web Routes
+|--------------------------------------------------------------------------
+*/
 
-Route::get('/', function () {
-    return view('welcome');
+// Auth Routes
+Route::get('/login', [AuthController::class, 'showLoginForm'])->name('login');
+Route::post('/login', [AuthController::class, 'login']);
+Route::post('/logout', [AuthController::class, 'logout'])->name('logout');
+
+// Protected Routes
+Route::middleware(['auth'])->group(function () {
+    Route::get('/', function () {
+        return redirect()->route('import.form');
+    });
+
+    // Import
+    Route::get('/import', [StockImportController::class, 'showForm'])->name('import.form');
+    Route::post('/import', [StockImportController::class, 'import'])->name('import.process');
+
+    // Consultation
+    Route::get('/consultation', [StockConsultationController::class, 'index'])->name('consultation.index');
+    Route::get('/consultation/{tableName}', [StockConsultationController::class, 'show'])->name('consultation.show');
+    Route::get('/consultation/{tableName}/export', [StockConsultationController::class, 'export'])->name('consultation.export');
+
+    // Audit
+    Route::get('/audit', [StockAuditController::class, 'index'])->name('audit.index');
+    Route::post('/audit/compare', [StockAuditController::class, 'compare'])->name('audit.compare');
+    Route::get('/audit/export', [StockAuditController::class, 'export'])->name('audit.export');
+
+    // User Management
+    Route::middleware(['admin'])->group(function () {
+        Route::delete('/consultation/{tableName}', [StockConsultationController::class, 'destroy'])->name('consultation.destroy');
+        Route::resource('users', UserController::class);
+    });
 });
-
-Route::get('/import', [\App\Http\Controllers\StockImportController::class, 'index'])->name('import.index');
-Route::post('/import', [\App\Http\Controllers\StockImportController::class, 'store'])->name('import.store');
-
-Route::get('/consultation', [\App\Http\Controllers\StockConsultationController::class, 'index'])->name('consultation.index');
-Route::get('/consultation/{tableName}', [\App\Http\Controllers\StockConsultationController::class, 'show'])->name('consultation.show');
-Route::get('/consultation/{tableName}/export', [\App\Http\Controllers\StockConsultationController::class, 'export'])->name('consultation.export');
-
-Route::get('/audit', [\App\Http\Controllers\StockAuditController::class, 'index'])->name('audit.index');
-Route::post('/audit/compare', [\App\Http\Controllers\StockAuditController::class, 'compare'])->name('audit.compare');
-Route::get('/audit/export', [\App\Http\Controllers\StockAuditController::class, 'export'])->name('audit.export');

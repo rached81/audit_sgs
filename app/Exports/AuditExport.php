@@ -30,42 +30,39 @@ class AuditExport implements FromCollection, WithHeadings, WithMapping, WithStyl
 
     public function headings(): array
     {
-        $headers = ['ARTICLE', 'DESIGNATION'];
-        
-        if ($this->type === 'valeur') {
-            $headers[] = 'EF Finale';
-            $headers[] = 'EF Valeur';
-            $headers[] = 'GD Finale';
-            $headers[] = 'GD Valeur';
-        } else {
-            $headers[] = 'EF ' . ucfirst($this->type);
-            $headers[] = 'GD ' . ucfirst($this->type);
-        }
-        
-        $headers[] = 'Ecart';
-        return $headers;
+        return [
+            'ARTICLE', 
+            'DESIGNATION',
+            // EF
+            'EF_INITIAL', 'EF_ENTREE', 'EF_SORTIE', 'EF_FINALE', 'EF_PUMP', 'EF_VALEUR',
+            // GD
+            'GD_INITIAL', 'GD_ENTREE', 'GD_SORTIE', 'GD_FINALE', 'GD_PUMP', 'GD_VALEUR',
+            'ECART'
+        ];
     }
 
     public function map($row): array
     {
-        $mapped = [
+        return [
             $row->ARTICLE,
             $row->designation,
+            
+            $row->ef_initial,
+            $row->ef_entree,
+            $row->ef_sortie,
+            $row->ef_finale,
+            $row->ef_pump,
+            $row->ef_valeur,
+
+            $row->gd_initial,
+            $row->gd_entree,
+            $row->gd_sortie,
+            $row->gd_finale,
+            $row->gd_pump,
+            $row->gd_valeur,
+
+            $row->ecart,
         ];
-
-        if ($this->type === 'valeur') {
-            $mapped[] = $row->ef_finale;
-            $mapped[] = $row->val_ef;
-            $mapped[] = $row->gd_finale;
-            $mapped[] = $row->val_gd;
-        } else {
-            $mapped[] = $row->val_ef;
-            $mapped[] = $row->val_gd;
-        }
-
-        $mapped[] = $row->ecart;
-
-        return $mapped;
     }
 
     public function styles(Worksheet $sheet)

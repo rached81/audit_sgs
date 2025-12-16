@@ -224,4 +224,16 @@ class StockConsultationController extends Controller
 
         return Excel::download(new StockExport($query, $columns), "{$tableName}.xlsx");
     }
+
+    public function destroy($tableName)
+    {
+        // Security: Ensure it's a valid generated table
+        if (stripos($tableName, 'RES_') !== 0) {
+            abort(403, "Action non autorisée.");
+        }
+
+        Schema::dropIfExists($tableName);
+
+        return redirect()->route('consultation.index')->with('success', "La table '$tableName' a été supprimée avec succès.");
+    }
 }

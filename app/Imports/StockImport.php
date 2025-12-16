@@ -42,7 +42,7 @@ class StockImport implements ToModel, WithHeadingRow, SkipsEmptyRows, WithChunkR
         $entree       = $this->toDecimal($row['entree']  ?? $row['Entrée'] ?? $row['entrée']  ?? null);
         $sortie       = $this->toDecimal($row['sortie']    ?? 0);
         $finale       = $this->toDecimal($row['finale']    ?? $row['actuel'] ?? $row['Finale']  ?? null);
-        $pump         = $this->toDecimal($row['pump.2017'] ?? $row['pump_2017'] ?? $row['pump']?? $row['PUMP'] ?? null);
+        $pump         = $this->toDecimal( $row['pump']?? $row['PUMP'] ?? null);
         $valeur       = $this->toDecimal($row['valeur']  ?? $row['Valeur']  ?? null);
 
 
@@ -50,7 +50,7 @@ class StockImport implements ToModel, WithHeadingRow, SkipsEmptyRows, WithChunkR
             return null;
         }
         // --------- RÈGLES DE FILTRAGE : ignorer les lignes "groupe" / "total" / titres ----------
-        if ($this->isGroupOrTitleRow($article, $designation, $row)) {
+        if ($this->skipRow($article, $designation, $row)) {
             return null; // skip
         }
 
@@ -73,26 +73,31 @@ class StockImport implements ToModel, WithHeadingRow, SkipsEmptyRows, WithChunkR
     }
 
     /**
-     * Détecte les lignes “Groupe: …”, “TOTAL …”, ou ligne fusionnée/entête.
+     * Détecte les lignes à ignorer (Groupe, Total, ou <= 2 colonnes remplies).
      */
-    private function isGroupOrTitleRow(string $article, string $designation, array $row): bool
+    private function skipRow(string $article, string $designation, array $row): bool
     {
+
         // 1) “Groupe: …” en colonne Article
         if ($article !== '' && preg_match('/^\s*g(?:roupe)?\s*:?/iu', $article)) {
             return true;
         }
-
         // 2) Lignes Total
         if ($designation !== '' && preg_match('/^\s*total\b/iu', $designation)) {
             return true;
         }
 
-        // 3) Lignes quasi vides ou purement décoratives (une seule cellule non vide)
+        // 3) Lignes avec peu de données (Total groupe, Valeur Total, etc...)
+        // On compte les colonnes non vides
         $nonEmpty = 0;
         foreach ($row as $v) {
-            if (trim((string)$v) !== '') { $nonEmpty++; if ($nonEmpty > 1) break; }
+            if (trim((string)$v) !== '') {
+                $nonEmpty++;
+                if ($nonEmpty > 2) break;
+            }
         }
-        if ($nonEmpty <= 1) {
+        // Si 2 colonnes ou moins sont remplies, on ignore
+        if ($nonEmpty <= 2) {
             return true;
         }
 

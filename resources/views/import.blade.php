@@ -79,7 +79,7 @@
 
         <!-- Form Right Side -->
         <div class="p-8 md:w-1/2">
-            <form id="importForm" action="{{ route('import.store') }}" method="POST" enctype="multipart/form-data">
+            <form id="importForm" action="{{ route('import.process') }}" method="POST" enctype="multipart/form-data">
                 @csrf
                 <div class="mb-6 grid grid-cols-1 md:grid-cols-3 gap-4">
                     <div>

@@ -35,13 +35,29 @@
                         <a href="#" class="flex items-center py-4 px-2">
                             <span class="font-semibold text-lg tracking-tight">SGS Audit</span>
                         </a>
-                    </div>
+                </div>
                     <!-- Primary Navbar items -->
                     <div class="hidden md:flex items-center space-x-1">
-                        <a href="{{ route('import.index') }}" class="py-4 px-2 {{ request()->routeIs('import.index') ? 'border-b-4 border-yellow-400 font-semibold' : 'text-green-100 hover:text-white transition duration-300' }}">Importation</a>
-                        <a href="{{ route('consultation.index') }}" class="py-4 px-2 {{ request()->routeIs('consultation.index') ? 'border-b-4 border-yellow-400 font-semibold' : 'text-green-100 hover:text-white transition duration-300' }}">Consultation</a>
-                        <a href="{{ route('audit.index') }}" class="py-4 px-2 {{ request()->routeIs('audit.index') ? 'border-b-4 border-yellow-400 font-semibold' : 'text-green-100 hover:text-white transition duration-300' }}">Audit</a>
+                        <a href="{{ route('import.form') }}" class="py-4 px-2 {{ request()->routeIs('import.*') ? 'border-b-4 border-yellow-400 font-semibold' : 'text-green-100 hover:text-white transition duration-300' }}">Importation</a>
+                        <a href="{{ route('consultation.index') }}" class="py-4 px-2 {{ request()->routeIs('consultation.*') ? 'border-b-4 border-yellow-400 font-semibold' : 'text-green-100 hover:text-white transition duration-300' }}">Consultation</a>
+                        <a href="{{ route('audit.index') }}" class="py-4 px-2 {{ request()->routeIs('audit.*') ? 'border-b-4 border-yellow-400 font-semibold' : 'text-green-100 hover:text-white transition duration-300' }}">Audit</a>
+                        @if(Auth::user()->profile === 'admin')
+                            <a href="{{ route('users.index') }}" class="py-4 px-2 {{ request()->routeIs('users.*') ? 'border-b-4 border-yellow-400 font-semibold' : 'text-green-100 hover:text-white transition duration-300' }}">Utilisateurs</a>
+                        @endif
                     </div>
+                </div>
+                <!-- Secondary Navbar items (User Menu) -->
+                <div class="hidden md:flex items-center space-x-3">
+                    @auth
+                        <div class="text-green-100 text-sm text-right leading-tight">
+                            <div class="font-bold">{{ Auth::user()->prenom }} {{ Auth::user()->nom }}</div>
+                            <div class="text-xs opacity-75">{{ Auth::user()->matricule }}</div>
+                        </div>
+                        <form action="{{ route('logout') }}" method="POST" class="inline">
+                            @csrf
+                            <button type="submit" class="py-2 px-2 font-medium text-white bg-green-500 rounded hover:bg-green-400 transition duration-300">Déconnexion</button>
+                        </form>
+                    @endauth
                 </div>
             </div>
         </div>

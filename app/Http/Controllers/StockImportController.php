@@ -15,7 +15,7 @@ class StockImportController extends Controller
     /**
      * Display the import form.
      */
-    public function index()
+    public function showForm()
     {
         return view('import');
     }
@@ -23,7 +23,7 @@ class StockImportController extends Controller
     /**
      * Handle the file upload and import.
      */
-    public function store(Request $request)
+    public function import(Request $request)
     {
         $request->validate([
             'annee' => 'required|numeric|digits:4',
