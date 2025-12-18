@@ -92,7 +92,7 @@
                             <th rowspan="2" class="px-2 py-3 text-left font-medium text-gray-500 uppercase tracking-wider w-40 border-r">Désignation</th>
 
                             <th colspan="6" class="px-2 py-1 text-center font-bold text-blue-700 bg-blue-100 border-r border-b">Etat Final (EF)</th>
-                            <th colspan="6" class="px-2 py-1 text-center font-bold text-green-700 bg-green-100 border-r border-b">Générateur (GD)</th>
+                            <th colspan="6" class="px-2 py-1 text-center font-bold text-green-700 bg-green-100 border-r border-b">Nouvelle Extension Générateur (GD)</th>
 
                             <th rowspan="2" class="px-2 py-3 text-right font-bold text-red-600 bg-red-50 uppercase tracking-wider sticky right-0 z-10 border-l">Ecart</th>
                         </tr>
