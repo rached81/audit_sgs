@@ -43,12 +43,13 @@ class StockAuditController extends Controller
 
         // --- Ecart Calculation Expression ---
         $ecartExpr = "0";
-        $whereClause = "1=1"; 
+        $whereClause = "1=1";
 
         if ($type === 'initial') {
             // Ecart = (EF_INITIAL * EF_PUMP) - (GD_SUM_INITIAL * GD_MAX_PUMP)
             $ecartExpr = "(ef.INITIAL * ef.PUMP) - (COALESCE(gd.gd_initial,0) * COALESCE(gd.gd_pump,0))";
-            $whereClause = "ABS($ecartExpr) > 0.005";
+//            $whereClause = "ABS($ecartExpr) > 0.005";
+            $whereClause = "ABS(ef.INITIAL  - (COALESCE(gd.gd_initial,0))) > 0.005";
         } elseif ($type === 'pump') {
              // Ecart = EF_PUMP - GD_MAX_PUMP
             $ecartExpr = "ef.PUMP - COALESCE(gd.gd_pump,0)";
@@ -65,7 +66,7 @@ class StockAuditController extends Controller
             SELECT
                 ef.ARTICLE,
                 ef.DESIGNATION as designation,
-                
+
                 -- EF Columns
                 ef.INITIAL as ef_initial,
                 ef.ENTREE as ef_entree,
@@ -107,9 +108,9 @@ class StockAuditController extends Controller
             ORDER BY
                 ABS(ecart) DESC
         ";
-        
-        // Note: Optimized to query tables directly instead of subquery for EF, as EF is already unique by Article usually? 
-        // Or if EF needs aggregation, we assume EF is already 'Etat Final' one row per article. 
+
+        // Note: Optimized to query tables directly instead of subquery for EF, as EF is already unique by Article usually?
+        // Or if EF needs aggregation, we assume EF is already 'Etat Final' one row per article.
         // The previous code had `SELECT * FROM efTable` inside a subquery, which is redundant if we alias the table directly.
         // Assuming EF table has unique ARTICLE key.
 
@@ -142,12 +143,12 @@ class StockAuditController extends Controller
 
         // --- Ecart Calculation Expression (Mirrors compare method) ---
         $ecartExpr = "0";
-        $whereClause = "1=1"; 
+        $whereClause = "1=1";
 
         if ($type === 'initial') {
             // Ecart = (EF_INITIAL * EF_PUMP) - (GD_SUM_INITIAL * GD_MAX_PUMP)
             $ecartExpr = "(ef.INITIAL * ef.PUMP) - (COALESCE(gd.gd_initial,0) * COALESCE(gd.gd_pump,0))";
-            $whereClause = "ABS($ecartExpr) > 0.005";
+            $whereClause = "ABS(ef.INITIAL  - (COALESCE(gd.gd_initial,0))) > 0.005";
         } elseif ($type === 'pump') {
              // Ecart = EF_PUMP - GD_MAX_PUMP
             $ecartExpr = "ef.PUMP - COALESCE(gd.gd_pump,0)";
@@ -164,7 +165,7 @@ class StockAuditController extends Controller
             SELECT
                 ef.ARTICLE,
                 ef.DESIGNATION as designation,
-                
+
                 -- EF Columns
                 ef.INITIAL as ef_initial,
                 ef.ENTREE as ef_entree,

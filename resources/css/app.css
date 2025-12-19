@@ -9,3 +9,77 @@
     --font-sans: 'Instrument Sans', ui-sans-serif, system-ui, sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji',
         'Segoe UI Symbol', 'Noto Color Emoji';
 }
+
+/* Custom SGS Audit Styles */
+@layer utilities {
+    .loader {
+        border-top-color: #3498db;
+        @apply animate-spin border-4 border-gray-200 rounded-full h-12 w-12;
+    }
+
+    /* Compact Table Styles - Revised for Conviviality */
+    .table-compact th {
+        @apply px-4 py-3 text-[11px] font-bold uppercase tracking-wider text-gray-600 bg-gray-100 border-b border-gray-200 select-none;
+    }
+
+    .table-compact td {
+        @apply px-4 py-2.5 text-xs text-gray-700 border-b border-gray-100 whitespace-nowrap;
+    }
+
+    /* Zebra Striping */
+    .table-compact tbody tr:nth-child(even) {
+        @apply bg-gray-100;
+    }
+
+    .table-compact tbody tr:hover {
+        @apply bg-green-50 transition-colors cursor-default;
+    }
+
+    /* Numeric columns styling */
+    .col-numeric {
+        @apply font-mono text-right tabular-nums;
+    }
+
+    /* Compact Filter Card */
+    .filter-section {
+        @apply bg-white border border-gray-200 rounded-lg shadow-sm mb-6 overflow-hidden;
+    }
+
+    .filter-header {
+        @apply px-4 py-3 border-b border-gray-100 bg-gray-50 flex justify-between items-center;
+    }
+
+    .filter-body {
+        @apply p-5 bg-white;
+    }
+
+    .input-compact {
+        @apply h-9 text-sm rounded-md border-gray-300 shadow-sm focus:border-green-500 focus:ring-green-500 transition-all;
+    }
+}
+
+@keyframes spinner {
+    0% {
+        transform: rotate(0deg);
+    }
+
+    100% {
+        transform: rotate(360deg);
+    }
+}
+
+/* Zebra Striping (fiable) */
+.table-compact tbody tr:nth-child(odd)>td {
+    @apply bg-white;
+}
+
+.table-compact tbody tr:nth-child(even)>td {
+    @apply bg-gray-50;
+}
+
+/* Hover sur toute la ligne */
+.table-compact tbody tr:hover>td {
+    @apply bg-green-50 transition-colors cursor-default;
+}
+
+body { outline: 6px solid red !important; }

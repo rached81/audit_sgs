@@ -115,13 +115,20 @@ class StockConsultationController extends Controller
         $query = DB::table($tableName);
 
         // Advanced Filtering
+        $operators = $request->input('operators', []);
         if ($filters = $request->input('filters')) {
             foreach ($filters as $column => $value) {
                 if (($value !== null && $value !== '') && in_array($column, $columns)) {
-                    // Exact match for numerical/specific columns
-                    if (in_array(strtoupper($column), ['PUMP', 'INITIAL','ENTREE','SORTIE','FINALE','VALEUR'])) {
+                    // Precise match for numerical/specific columns
+                    $numericColumns = ['PUMP', 'INITIAL', 'ENTREE', 'SORTIE', 'FINALE', 'VALEUR'];
+                    if (in_array(strtoupper($column), $numericColumns)) {
+                        $operator = $operators[$column] ?? '=';
+                        // Validate operator
+                        if (!in_array($operator, ['=', '>', '<', '>=', '<=', '!='])) {
+                            $operator = '=';
+                        }
                         // Use whereRaw with +0 to force numeric comparison (handles 0 vs 0.000)
-                        $query->whereRaw("$column + 0 = ?", [$value]);
+                        $query->whereRaw("$column + 0 $operator ?", [$value]);
                     } else {
                         $query->where($column, 'LIKE', "%{$value}%");
                     }
@@ -178,13 +185,18 @@ class StockConsultationController extends Controller
         $query = DB::table($tableName);
 
         // Advanced Filtering
+        $operators = $request->input('operators', []);
         if ($filters = $request->input('filters')) {
             foreach ($filters as $column => $value) {
-               if (($value !== null && $value !== '') && in_array($column, $columns)) {
-                    // Exact match for numerical/specific columns
-                    if (in_array(strtoupper($column), ['PUMP', 'INITIAL', 'ENTREE', 'SORTIE', 'FINALE', 'VALEUR'])) {
-                        // Use whereRaw with +0 to force numeric comparison
-                        $query->whereRaw("$column + 0 = ?", [$value]);
+                if (($value !== null && $value !== '') && in_array($column, $columns)) {
+                    // Precise match for numerical/specific columns
+                    $numericColumns = ['PUMP', 'INITIAL', 'ENTREE', 'SORTIE', 'FINALE', 'VALEUR'];
+                    if (in_array(strtoupper($column), $numericColumns)) {
+                        $operator = $operators[$column] ?? '=';
+                        if (!in_array($operator, ['=', '>', '<', '>=', '<=', '!='])) {
+                            $operator = '=';
+                        }
+                        $query->whereRaw("$column + 0 $operator ?", [$value]);
                     } else {
                         $query->where($column, 'LIKE', "%{$value}%");
                     }

@@ -13,17 +13,6 @@
     @else
         <script src="https://cdn.tailwindcss.com"></script>
     @endif
-    <style>
-        .loader {
-            border-top-color: #3498db;
-            -webkit-animation: spinner 1.5s linear infinite;
-            animation: spinner 1.5s linear infinite;
-        }
-        @keyframes spinner {
-            0% { transform: rotate(0deg); }
-            100% { transform: rotate(360deg); }
-        }
-    </style>
 </head>
 <body class="antialiased bg-gray-50 min-h-screen text-gray-800">
     <nav class="bg-green-700 text-white shadow-lg">

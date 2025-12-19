@@ -41,7 +41,7 @@ class StockImport implements ToModel, WithHeadingRow, SkipsEmptyRows, WithChunkR
         $initial      = $this->toDecimal($row['initial']   ?? $row['Initial']  ?? null);
         $entree       = $this->toDecimal($row['entree']  ?? $row['Entrée'] ?? $row['entrée']  ?? null);
         $sortie       = $this->toDecimal($row['sortie']    ?? 0);
-        $finale       = $this->toDecimal($row['finale']    ?? $row['actuel'] ?? $row['Finale']  ?? null);
+        $finale       = $this->toDecimal($row['finale']    ?? $row['final']  ?? $row['Final']   ?? $row['actuel'] ?? $row['Finale']  ?? null);
         $pump         = $this->toDecimal( $row['pump']?? $row['PUMP'] ?? null);
         $valeur       = $this->toDecimal($row['valeur']  ?? $row['Valeur']  ?? null);
 

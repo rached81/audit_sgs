@@ -44,7 +44,7 @@
                     </button>
                     <button type="submit" name="type" value="initial"
                             class="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2 px-4 rounded shadow focus:outline-none focus:ring-2 focus:ring-indigo-500 transition {{ ($type ?? '') == 'initial' ? 'ring-2 ring-offset-2 ring-indigo-600' : '' }}">
-                        ⏮️ Stock Initial (Valeur)
+                        ⏮️ Stock Initial
                     </button>
                     <button type="submit" name="type" value="pump"
                             class="bg-purple-600 hover:bg-purple-700 text-white font-bold py-2 px-4 rounded shadow focus:outline-none focus:ring-2 focus:ring-purple-500 transition {{ ($type ?? '') == 'pump' ? 'ring-2 ring-offset-2 ring-purple-600' : '' }}">
