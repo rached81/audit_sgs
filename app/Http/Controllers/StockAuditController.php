@@ -57,15 +57,15 @@ class StockAuditController extends Controller
         } else {
             // Default: Valeur
             // Ecart = EF_VALEUR - GD_SUM_VALEUR
-            $ecartExpr = "ef.VALEUR - COALESCE(gd.gd_valeur,0)";
-            $whereClause = "(ABS($ecartExpr) > 0.005 OR ABS(ef.FINALE - COALESCE(gd.gd_finale, 0)) > 0.001)";
+            $ecartExpr = "COALESCE(ef.VALEUR,0)  - COALESCE(gd.gd_valeur,0)";
+            $whereClause = "(ABS($ecartExpr) > 0.005 OR ABS(COALESCE(ef.FINALE, 0) - COALESCE(gd.gd_finale, 0)) > 0.001)";
         }
 
         // Construct Dynamic Query to fetch ALL columns
         $sql = "
-            SELECT
-                ef.ARTICLE,
-                ef.DESIGNATION as designation,
+        SELECT
+                COALESCE(ef.ARTICLE, gd.ARTICLE) as ARTICLE,
+                COALESCE(ef.DESIGNATION, gd.gd_designation) as designation,
 
                 -- EF Columns
                 ef.INITIAL as ef_initial,
@@ -88,10 +88,11 @@ class StockAuditController extends Controller
 
             FROM
                 $efTable AS ef
-            LEFT JOIN
+            RIGHT JOIN
                 (
                     SELECT
                         ARTICLE,
+                        MAX(DESIGNATION) as gd_designation,
                         SUM(INITIAL) as gd_initial,
                         SUM(ENTREE) as gd_entree,
                         SUM(SORTIE) as gd_sortie,
@@ -106,8 +107,7 @@ class StockAuditController extends Controller
             WHERE
                $whereClause
             ORDER BY
-                ABS(ecart) DESC
-        ";
+                ABS(ecart) DESC";
 
         // Note: Optimized to query tables directly instead of subquery for EF, as EF is already unique by Article usually?
         // Or if EF needs aggregation, we assume EF is already 'Etat Final' one row per article.
@@ -156,15 +156,15 @@ class StockAuditController extends Controller
         } else {
             // Default: Valeur
             // Ecart = EF_VALEUR - GD_SUM_VALEUR
-            $ecartExpr = "ef.VALEUR - COALESCE(gd.gd_valeur,0)";
-            $whereClause = "(ABS($ecartExpr) > 0.005 OR ABS(ef.FINALE - COALESCE(gd.gd_finale, 0)) > 0.001)";
+            $ecartExpr = "COALESCE(ef.VALEUR,0) - COALESCE(gd.gd_valeur,0)";
+            $whereClause = "(ABS($ecartExpr) > 0.005 OR ABS(COALESCE(ef.FINALE, 0) - COALESCE(gd.gd_finale, 0)) > 0)";
         }
 
         // Construct Dynamic Query to fetch ALL columns (Mirrors compare method)
         $sql = "
             SELECT
-                ef.ARTICLE,
-                ef.DESIGNATION as designation,
+                COALESCE(ef.ARTICLE, gd.ARTICLE) as ARTICLE,
+                COALESCE(ef.DESIGNATION, gd.gd_designation) as designation,
 
                 -- EF Columns
                 ef.INITIAL as ef_initial,
@@ -187,10 +187,11 @@ class StockAuditController extends Controller
 
             FROM
                 $efTable AS ef
-            LEFT JOIN
+            RIGHT JOIN
                 (
                     SELECT
                         ARTICLE,
+                        MAX(DESIGNATION) as gd_designation,
                         SUM(INITIAL) as gd_initial,
                         SUM(ENTREE) as gd_entree,
                         SUM(SORTIE) as gd_sortie,
