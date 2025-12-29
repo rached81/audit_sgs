@@ -35,8 +35,11 @@ Route::middleware(['auth'])->group(function () {
 
     // Audit
     Route::get('/audit', [StockAuditController::class, 'index'])->name('audit.index');
-    Route::post('/audit/compare', [StockAuditController::class, 'compare'])->name('audit.compare');
+    Route::get('/audit/compare', [StockAuditController::class, 'compare'])->name('audit.compare');
     Route::get('/audit/export', [StockAuditController::class, 'export'])->name('audit.export');
+
+    // Import Status
+    Route::get('/import/status', [StockImportController::class, 'checkStatus'])->name('import.status');
 
     // User Management
     Route::middleware(['admin'])->group(function () {

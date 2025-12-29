@@ -8,7 +8,9 @@ use Maatwebsite\Excel\Concerns\WithHeadingRow;
 use Maatwebsite\Excel\Concerns\SkipsEmptyRows;
 use Maatwebsite\Excel\Concerns\WithChunkReading;
 
-class StockImport implements ToModel, WithHeadingRow, SkipsEmptyRows, WithChunkReading
+use Illuminate\Contracts\Queue\ShouldQueue;
+
+class StockImport implements ToModel, WithHeadingRow, SkipsEmptyRows, WithChunkReading, ShouldQueue
 {
     /** @var string */
     protected string $tableName;

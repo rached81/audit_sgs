@@ -138,18 +138,48 @@
         document.getElementById('importForm').onsubmit = function() {
             // Show Loading Overlay
             document.getElementById('loadingOverlay').classList.remove('hidden');
-
-            // Estimate time: Assume 1MB takes ~2 seconds (very rough estimate)
-            const sizeInMB = selectedFileSize / (1024 * 1024);
-            const factor = 10; // 10 seconds per MB
-            let estimatedSeconds = Math.ceil(sizeInMB * factor);
-            if (estimatedSeconds < 2) estimatedSeconds = 2; // Minimum 2s
-
-            const estimateText = estimatedSeconds > 60
-                ? Math.ceil(estimatedSeconds / 60) + " minutes"
-                : estimatedSeconds + " secondes";
-
-            document.getElementById('timeEstimate').innerText = "Estimation : ~" + estimateText;
+            
+            // Note: with queue/async import, we don't need the estimate logic here as much,
+            // or we can keep it as a "startup" estimate.
+            document.getElementById('timeEstimate').innerText = "Démarrage de l'import...";
         };
+
+        // Check if we need to poll for progress (Flash session variable passed to view)
+        @if(session('import_table'))
+            const importTable = "{{ session('import_table') }}";
+            const statusUrl = "{{ route('import.status') }}?table=" + importTable;
+            const estimateDiv = document.getElementById('timeEstimate');
+            const overlay = document.getElementById('loadingOverlay');
+            
+            // Re-open overlay if it was closed (page reload)
+            overlay.classList.remove('hidden');
+            estimateDiv.innerText = "Traitement en cours...";
+            
+            let pollInterval = setInterval(function() {
+                fetch(statusUrl)
+                    .then(response => response.json())
+                    .then(data => {
+                        estimateDiv.innerText = "Lignes importées : " + data.count;
+                        // Optional: Stop polling if count stops increasing for a while, or let user close.
+                    })
+                    .catch(err => console.error(err));
+            }, 2000); // Poll every 2 seconds
+
+            // Allow user to close/hide overlay to continue working while import runs
+            // Add a close button logic or just let them navigate away.
+            // For now, let's append a "Close" button to the overlay for UX.
+            const container = document.querySelector('#loadingOverlay > div');
+            if (!document.getElementById('closeOverlayBtn')) {
+                const btn = document.createElement('button');
+                btn.id = 'closeOverlayBtn';
+                btn.innerText = "Réduire / Continuer";
+                btn.className = "mt-4 bg-gray-200 hover:bg-gray-300 text-gray-800 font-semibold py-2 px-4 rounded shadow";
+                btn.onclick = function() {
+                    overlay.classList.add('hidden');
+                    clearInterval(pollInterval);
+                };
+                container.appendChild(btn);
+            }
+        @endif
     </script>
 @endsection

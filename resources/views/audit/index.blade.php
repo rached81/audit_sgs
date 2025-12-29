@@ -16,8 +16,7 @@
             </div>
         @endif
 
-        <form action="{{ route('audit.compare') }}" method="POST" class="flex flex-col md:flex-row md:items-end gap-4">
-            @csrf
+        <form action="{{ route('audit.compare') }}" method="GET" class="flex flex-col md:flex-row md:items-end gap-4">
 
             <div class="w-full md:w-32">
                 <label for="annee" class="block text-gray-700 text-sm font-bold mb-2">Année</label>

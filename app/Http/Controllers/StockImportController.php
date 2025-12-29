@@ -91,9 +91,25 @@ class StockImportController extends Controller
         // 2. Import File
         try {
             Excel::import(new StockImport($tableName), $file);
-            return back()->with('success', "Succès ! Les données ont été importées dans la table [$tableName].");
+            Excel::import(new StockImport($tableName), $file);
+            return back()->with('success', "Importation lancée en arrière-plan. Suivi en cours...")->with('import_table', $tableName);
         } catch (\Exception $e) {
             return back()->withErrors(['file' => 'Erreur lors de l\'import : ' . $e->getMessage()]);
         }
+    }
+
+    public function checkStatus(Request $request)
+    {
+        $tableName = $request->input('table');
+        if (!$tableName) {
+            return response()->json(['count' => 0]);
+        }
+
+        if (Schema::hasTable($tableName)) {
+            $count = DB::table($tableName)->count();
+            return response()->json(['count' => $count]);
+        }
+
+        return response()->json(['count' => 0]);
     }
 }
