@@ -6,9 +6,12 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Cache;
 use Maatwebsite\Excel\Facades\Excel;
 use Maatwebsite\Excel\HeadingRowImport;
 use App\Imports\StockImport;
+use Illuminate\Support\Facades\Queue;
+
 
 class StockImportController extends Controller
 {
@@ -90,7 +93,10 @@ class StockImportController extends Controller
 
         // 2. Import File
         try {
-            Excel::import(new StockImport($tableName), $file);
+            // Reset cache status for this table
+            \Illuminate\Support\Facades\Cache::forget('import_total_' . $tableName);
+            \Illuminate\Support\Facades\Cache::forget('import_status_' . $tableName);
+
             Excel::import(new StockImport($tableName), $file);
             return back()->with('success', "Importation lancée en arrière-plan. Suivi en cours...")->with('import_table', $tableName);
         } catch (\Exception $e) {
@@ -107,9 +113,18 @@ class StockImportController extends Controller
 
         if (Schema::hasTable($tableName)) {
             $count = DB::table($tableName)->count();
-            return response()->json(['count' => $count]);
+            
+            // Retrieve total and status from Cache
+            $total = \Illuminate\Support\Facades\Cache::get('import_total_' . $tableName, 0);
+            $status = \Illuminate\Support\Facades\Cache::get('import_status_' . $tableName, 'pending');
+
+            return response()->json([
+                'count' => $count,
+                'total' => $total,
+                'status' => $status
+            ]);
         }
 
-        return response()->json(['count' => 0]);
+        return response()->json(['count' => 0, 'total' => 0, 'status' => 'not_found']);
     }
 }

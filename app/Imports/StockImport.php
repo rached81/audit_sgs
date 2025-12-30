@@ -3,14 +3,19 @@
 namespace App\Imports;
 
 use Illuminate\Support\Str;
+use Illuminate\Contracts\Queue\ShouldQueue;
 use Maatwebsite\Excel\Concerns\ToModel;
 use Maatwebsite\Excel\Concerns\WithHeadingRow;
 use Maatwebsite\Excel\Concerns\SkipsEmptyRows;
 use Maatwebsite\Excel\Concerns\WithChunkReading;
 
-use Illuminate\Contracts\Queue\ShouldQueue;
+use Maatwebsite\Excel\Concerns\WithEvents;
+use Maatwebsite\Excel\Events\BeforeImport;
+use Maatwebsite\Excel\Events\AfterImport;
+use Maatwebsite\Excel\Events\ImportFailed;
+use Illuminate\Support\Facades\Cache;
 
-class StockImport implements ToModel, WithHeadingRow, SkipsEmptyRows, WithChunkReading, ShouldQueue
+class StockImport implements ToModel, WithHeadingRow, SkipsEmptyRows, WithChunkReading, ShouldQueue, WithEvents
 {
     /** @var string */
     protected string $tableName;
@@ -21,6 +26,29 @@ class StockImport implements ToModel, WithHeadingRow, SkipsEmptyRows, WithChunkR
     public function __construct(string $tableName)
     {
         $this->tableName = $tableName;
+    }
+
+    public function registerEvents(): array
+    {
+        return [
+            BeforeImport::class => function(BeforeImport $event) {
+                $totalRows = $event->getReader()->getTotalRows();
+                $count = 0;
+                // getTotalRows returns array defined by worksheet name/index
+                if (!empty($totalRows)) {
+                    $count = reset($totalRows);
+                }
+                // Subtract 1 for header if needed, but heuristic is fine
+                Cache::put('import_total_' . $this->tableName, $count, 3600);
+                Cache::put('import_status_' . $this->tableName, 'processing', 3600);
+            },
+            AfterImport::class => function(AfterImport $event) {
+                 Cache::put('import_status_' . $this->tableName, 'completed', 3600);
+            },
+            ImportFailed::class => function(ImportFailed $event) {
+                 Cache::put('import_status_' . $this->tableName, 'failed', 3600);
+            },
+        ];
     }
 
     public function headingRow(): int

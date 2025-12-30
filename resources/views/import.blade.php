@@ -148,38 +148,66 @@
         @if(session('import_table'))
             const importTable = "{{ session('import_table') }}";
             const statusUrl = "{{ route('import.status') }}?table=" + importTable;
-            const estimateDiv = document.getElementById('timeEstimate');
             const overlay = document.getElementById('loadingOverlay');
-            
-            // Re-open overlay if it was closed (page reload)
+            const estimateDiv = document.getElementById('timeEstimate');
+            const loaderDiv = overlay.querySelector('.loader');
+
+            // Re-open overlay
             overlay.classList.remove('hidden');
-            estimateDiv.innerText = "Traitement en cours...";
+            estimateDiv.innerHTML = '<div class="w-full bg-gray-200 rounded-full h-4 mb-4 dark:bg-gray-700"><div id="progressBar" class="bg-blue-600 h-4 rounded-full" style="width: 0%"></div></div><p id="progressText" class="text-sm font-bold text-gray-700">0%</p>';
             
+            const progressBar = document.getElementById('progressBar');
+            const progressText = document.getElementById('progressText');
+
             let pollInterval = setInterval(function() {
                 fetch(statusUrl)
                     .then(response => response.json())
                     .then(data => {
-                        estimateDiv.innerText = "Lignes importées : " + data.count;
-                        // Optional: Stop polling if count stops increasing for a while, or let user close.
+                        let percent = 0;
+                        if (data.total > 0) {
+                            percent = Math.round((data.count / data.total) * 100);
+                        } else if (data.count > 0) {
+                             // Fallback if total is not yet available
+                             percent = 5; 
+                        }
+                        if (percent > 100) percent = 100;
+                        
+                        progressBar.style.width = percent + "%";
+                        progressText.innerText = percent + "% (" + data.count + " / " + (data.total || '?') + ")";
+
+                        if (data.status === 'completed' || (data.total > 0 && data.count >= data.total)) {
+                            clearInterval(pollInterval);
+                            progressBar.style.width = "100%";
+                             progressBar.classList.remove('bg-blue-600');
+                             progressBar.classList.add('bg-green-500');
+                            progressText.innerText = "100% - Import Terminé !";
+                            
+                            // Change Icon
+                            loaderDiv.classList.remove('loader', 'ease-linear', 'rounded-full', 'border-8', 'border-t-8', 'border-gray-200');
+                            loaderDiv.classList.add('flex', 'items-center', 'justify-center');
+                            loaderDiv.innerHTML = '<svg class="w-16 h-16 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>';
+                            
+                            // Update Heading
+                            overlay.querySelector('h2').innerText = "Succès !";
+                            overlay.querySelector('p').innerText = "L'importation est terminée avec succès.";
+
+                            // Add Close Button if not exists
+                             const container = overlay.querySelector('div');
+                            if (!document.getElementById('closeOverlayBtn')) {
+                                const btn = document.createElement('button');
+                                btn.id = 'closeOverlayBtn';
+                                btn.innerText = "Fermer";
+                                btn.className = "mt-4 w-full bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded shadow transition";
+                                btn.onclick = function() {
+                                    overlay.classList.add('hidden');
+                                    window.location.reload(); // Reload to show new data logic if needed, or just close
+                                };
+                                container.appendChild(btn);
+                            }
+                        }
                     })
                     .catch(err => console.error(err));
-            }, 2000); // Poll every 2 seconds
-
-            // Allow user to close/hide overlay to continue working while import runs
-            // Add a close button logic or just let them navigate away.
-            // For now, let's append a "Close" button to the overlay for UX.
-            const container = document.querySelector('#loadingOverlay > div');
-            if (!document.getElementById('closeOverlayBtn')) {
-                const btn = document.createElement('button');
-                btn.id = 'closeOverlayBtn';
-                btn.innerText = "Réduire / Continuer";
-                btn.className = "mt-4 bg-gray-200 hover:bg-gray-300 text-gray-800 font-semibold py-2 px-4 rounded shadow";
-                btn.onclick = function() {
-                    overlay.classList.add('hidden');
-                    clearInterval(pollInterval);
-                };
-                container.appendChild(btn);
-            }
+            }, 1500);
         @endif
     </script>
 @endsection
