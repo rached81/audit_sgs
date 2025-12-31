@@ -157,7 +157,29 @@
                             </td>
                         </tr>
                     @endforelse
-                </tbody>
+                @if(isset($totals) && !request('group_by_article'))
+                    <tfoot class="bg-gray-100 border-t-2 border-gray-300 font-bold text-gray-800 sticky bottom-0 z-10 shadow-inner">
+                        <tr>
+                            @foreach ($columns as $column)
+                                <td class="px-4 py-3 {{ in_array('PUMP', $columns) && $column == 'PUMP' ? ' hidden md:table-cell' : '' }}">
+                                    @php
+                                        // We map the column name to the sum alias (e.g. INITIAL -> total_initial)
+                                        $sumKey = 'total_' . strtolower($column);
+                                        $isExcluded = in_array(strtoupper($column), ['ENTREE', 'SORTIE']);
+                                    @endphp
+                                    
+                                    @if(!$isExcluded && isset($totals->$sumKey))
+                                        <div class="text-right">
+                                            {{ number_format($totals->$sumKey, 2, ',', ' ') }}
+                                        </div>
+                                    @elseif($column == 'ARTICLE')
+                                        <span class="text-gray-500">TOTAL</span>
+                                    @endif
+                                </td>
+                            @endforeach
+                        </tr>
+                    </tfoot>
+                @endif
             </table>
             </div>
             </div>

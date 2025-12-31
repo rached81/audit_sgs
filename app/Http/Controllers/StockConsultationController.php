@@ -62,10 +62,25 @@ class StockConsultationController extends Controller
                                  }
 
                                  // Add to group
+                                 $stats = DB::table($tableName)->selectRaw('
+                                     SUM(INITIAL) as total_initial,
+                                     SUM(ENTREE) as total_entree,
+                                     SUM(SORTIE) as total_sortie,
+                                     SUM(FINALE) as total_finale,
+                                     SUM(VALEUR) as total_valeur,
+                                     SUM(INITIAL * PUMP) as total_initial_valorise,
+                                     SUM(CASE WHEN PUMP = 0 THEN 1 ELSE 0 END) as count_pump_0,
+                                     SUM(CASE WHEN INITIAL = 0 THEN 1 ELSE 0 END) as count_initial_0
+                                 ')->first();
+
+                                 $diff = ($stats->total_initial + $stats->total_entree) - ($stats->total_sortie + $stats->total_finale);
+
                                  $groupedTables[$annee][$reseau][] = [
                                      'name' => $tableName,
                                      'programme' => $programme,
-                                     'count' => $count
+                                     'count' => $count,
+                                     'totals' => $stats,
+                                     'diff' => $diff
                                  ];
                                  
                                  continue; // Skip the fallback
@@ -73,10 +88,25 @@ class StockConsultationController extends Controller
                          }
 
                          // Fallback for non-standard RES tables
+                         $stats = DB::table($tableName)->selectRaw('
+                             SUM(INITIAL) as total_initial,
+                             SUM(ENTREE) as total_entree,
+                             SUM(SORTIE) as total_sortie,
+                             SUM(FINALE) as total_finale,
+                             SUM(VALEUR) as total_valeur,
+                             SUM(INITIAL * PUMP) as total_initial_valorise,
+                             SUM(CASE WHEN PUMP = 0 THEN 1 ELSE 0 END) as count_pump_0,
+                             SUM(CASE WHEN INITIAL = 0 THEN 1 ELSE 0 END) as count_initial_0
+                         ')->first();
+                         
+                         $diff = ($stats->total_initial + $stats->total_entree) - ($stats->total_sortie + $stats->total_finale);
+
                          $groupedTables['Autres']['Divers'][] = [
                              'name' => $tableName,
                              'programme' => 'N/A',
-                             'count' => $count
+                             'count' => $count,
+                             'totals' => $stats,
+                             'diff' => $diff
                          ];
                      }
                 } catch (\Exception $e) {
@@ -88,14 +118,43 @@ class StockConsultationController extends Controller
         // Sort years descending
         krsort($groupedTables);
 
-        return view('consultation', compact('groupedTables'));
+        // Calculate Comparisons (EF vs GD) per Year/Network
+        $comparisons = [];
+        foreach ($groupedTables as $annee => $reseaux) {
+            foreach ($reseaux as $reseau => $tables) {
+                $efTable = null;
+                $gdTable = null;
+
+                foreach ($tables as $table) {
+                    if ($table['programme'] === 'EF') {
+                        $efTable = $table;
+                    } elseif ($table['programme'] === 'GD') {
+                        $gdTable = $table;
+                    }
+                }
+
+                if ($efTable && $gdTable && isset($efTable['totals'], $gdTable['totals'])) {
+                    $comparisons[$annee][$reseau] = [
+                        // Ecart Initial = (Initial * Pump) EF - (Initial * Pump) GD
+                        'diff_initial' => $efTable['totals']->total_initial_valorise - $gdTable['totals']->total_initial_valorise,
+                        // Ecart Final = Valeur Totale EF - Valeur Totale GD
+                        'diff_finale' => $efTable['totals']->total_valeur - $gdTable['totals']->total_valeur,
+                        'ef_stats' => [
+                            'pump_0' => $efTable['totals']->count_pump_0,
+                            'initial_0' => $efTable['totals']->count_initial_0
+                        ],
+                        'gd_stats' => [
+                            'pump_0' => $gdTable['totals']->count_pump_0,
+                            'initial_0' => $gdTable['totals']->count_initial_0
+                        ]
+                    ];
+                }
+            }
+        }
+
+        return view('consultation', compact('groupedTables', 'comparisons'));
     }
-    /**
-     * Display the specified resource.
-     *
-     * @param  string  $tableName
-     * @return \Illuminate\Http\Response
-     */
+
     /**
      * Display the specified resource.
      *
@@ -104,8 +163,6 @@ class StockConsultationController extends Controller
      */
     public function show(Request $request, $tableName)
     {
-
-    
         // Security check
         if (!Schema::hasTable($tableName) || stripos($tableName, 'RES_') !== 0) {
             abort(404, "Table not found or access denied.");
@@ -145,9 +202,34 @@ class StockConsultationController extends Controller
             });
         }
 
-        // Grouping Logic - Restricted to 'GD' tables
+        // Grouping Logic
         $isGdTable = stripos($tableName, 'GD') !== false;
         
+        // Calculate Totals BEFORE Pagination and Grouping modification (if possible)
+        // Note: If grouped, totals should reflect the grouped result.
+        // However, SUM(SUM(col)) is just SUM(col). So base query works for global totals.
+        
+        // We clone the query to get totals for the current filtered set
+        $totalsQuery = $query->clone();
+        
+        // We need to calculate sums for specific columns if they exist
+        $totalSelects = [];
+        $sumCols = ['INITIAL', 'ENTREE', 'SORTIE', 'FINALE', 'VALEUR'];
+        foreach ($sumCols as $col) {
+            if (in_array($col, $columns)) {
+                 $totalSelects[] = "SUM($col) as total_" . strtolower($col);
+            }
+        }
+        
+        $totals = null;
+        if (!empty($totalSelects)) {
+             try {
+                $totals = $totalsQuery->selectRaw(implode(', ', $totalSelects))->first();
+             } catch (\Exception $e) {
+                 // Fallback if error
+             }
+        }
+
         if ($isGdTable && $request->boolean('group_by_article') && in_array('ARTICLE', $columns)) {
             $selects = ['ARTICLE'];
             
@@ -171,7 +253,7 @@ class StockConsultationController extends Controller
         // Pagination
         $rows = $query->paginate(50)->withQueryString();
 
-        return view('consultation.show', compact('tableName', 'rows', 'columns', 'isGdTable'));
+        return view('consultation.show', compact('tableName', 'rows', 'columns', 'isGdTable', 'totals'));
     }
 
     public function export(Request $request, $tableName)
