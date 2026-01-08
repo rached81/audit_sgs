@@ -27,6 +27,8 @@ Route::middleware(['auth'])->group(function () {
     // Import
     Route::get('/import', [StockImportController::class, 'showForm'])->name('import.form');
     Route::post('/import', [StockImportController::class, 'import'])->name('import.process');
+    Route::post('/import/mapping', [StockImportController::class, 'processMappedImport'])->name('import.process_mapping');
+    Route::get('/import/status', [StockImportController::class, 'checkStatus'])->name('import.status');
 
     // Consultation
     Route::get('/consultation', [StockConsultationController::class, 'index'])->name('consultation.index');
@@ -37,9 +39,6 @@ Route::middleware(['auth'])->group(function () {
     Route::get('/audit', [StockAuditController::class, 'index'])->name('audit.index');
     Route::get('/audit/compare', [StockAuditController::class, 'compare'])->name('audit.compare');
     Route::get('/audit/export', [StockAuditController::class, 'export'])->name('audit.export');
-
-    // Import Status
-    Route::get('/import/status', [StockImportController::class, 'checkStatus'])->name('import.status');
 
     // User Management
     Route::middleware(['admin'])->group(function () {

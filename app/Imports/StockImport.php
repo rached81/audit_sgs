@@ -9,24 +9,36 @@ use Maatwebsite\Excel\Concerns\SkipsEmptyRows;
 use Maatwebsite\Excel\Concerns\WithChunkReading;
 
 use Illuminate\Contracts\Queue\ShouldQueue;
+use Maatwebsite\Excel\Concerns\Importable;
 
 class StockImport implements ToModel, WithHeadingRow, SkipsEmptyRows, WithChunkReading, ShouldQueue
 {
+    use Importable;
+
+    /** @var array */
+    protected array $mapping;
+
+    /** @var int */
+    protected int $headingRow;
+
     /** @var string */
-    protected string $tableName;
+    public string $tableName;
 
     /**
      * @param string $tableName
+     * @param array $mapping
+     * @param int $headingRow
      */
-    public function __construct(string $tableName)
+    public function __construct(string $tableName, array $mapping = [], int $headingRow = 1)
     {
         $this->tableName = $tableName;
+        $this->mapping = $mapping;
+        $this->headingRow = $headingRow;
     }
 
     public function headingRow(): int
     {
-        // Ajuste si tes entêtes commencent à une autre ligne
-        return 1;
+        return $this->headingRow;
     }
 
     public function chunkSize(): int
@@ -36,23 +48,26 @@ class StockImport implements ToModel, WithHeadingRow, SkipsEmptyRows, WithChunkR
 
     public function model(array $row)
     {
-        // Normalise clés (au cas où l’entête diffère légèrement)
 
-        $article     = trim((string)($row['article'] ?? $row['artcod'] ?? ''));
-        $designation  = trim((string)($row['désignation']  ?? $row['designation'] ?? $row['Désignation'] ?? ''));
-        $initial      = $this->toDecimal($row['initial']   ?? $row['Initial']  ?? null);
-        $entree       = $this->toDecimal($row['entree']  ?? $row['Entrée'] ?? $row['entrée']  ?? null);
-        $sortie       = $this->toDecimal($row['sortie']    ?? 0);
-        $finale       = $this->toDecimal($row['finale']    ?? $row['final']  ?? $row['Final']   ?? $row['actuel'] ?? $row['Finale']  ?? null);
-        $pump         = $this->toDecimal( $row['pump']?? $row['PUMP'] ?? null);
-        $valeur       = $this->toDecimal($row['valeur']  ?? $row['Valeur']  ?? null);
+        // Helper to get value based on mapping or fallback
+        // We reuse the public resolveValue helper now
+        $getValue = fn($field) => $this->resolveValue($field, $row);
+
+        $article     = trim((string)$getValue('article'));
+        $designation  = trim((string)$getValue('designation'));
+        $initial      = $this->toDecimal($getValue('initial'));
+        $entree       = $this->toDecimal($getValue('entree'));
+        $sortie       = $this->toDecimal($getValue('sortie'));
+        $finale       = $this->toDecimal($getValue('finale'));
+        $pump         = $this->toDecimal($getValue('pump'));
+        $valeur       = $this->toDecimal($getValue('valeur'));
 
 
         if ($article === '') {
             return null;
         }
         // --------- RÈGLES DE FILTRAGE : ignorer les lignes "groupe" / "total" / titres ----------
-        if ($this->skipRow($article, $designation, $row)) {
+        if ($this->shouldSkip($row)) {
             return null; // skip
         }
 
@@ -75,9 +90,23 @@ class StockImport implements ToModel, WithHeadingRow, SkipsEmptyRows, WithChunkR
     }
 
     /**
+     * Public wrapper to check if a row should be skipped.
+     * Useful for counting valid rows before import.
+     */
+    public function shouldSkip(array $row): bool
+    {
+        $article = trim((string)$this->resolveValue('article', $row));
+        $designation = trim((string)$this->resolveValue('designation', $row));
+
+        if ($article === '') return true;
+
+        return $this->skipRow($article, $designation, $row);
+    }
+
+    /**
      * Détecte les lignes à ignorer (Groupe, Total, ou <= 2 colonnes remplies).
      */
-    private function skipRow(string $article, string $designation, array $row): bool
+    protected function skipRow(string $article, string $designation, array $row): bool
     {
 
         // 1) “Groupe: …” en colonne Article
@@ -106,6 +135,32 @@ class StockImport implements ToModel, WithHeadingRow, SkipsEmptyRows, WithChunkR
         return false;
     }
 
+    /**
+     * Resolves a field value from the row using mapping or fallbacks.
+     */
+    public function resolveValue(string $field, array $row)
+    {
+        // If we have a mapping for this field, use it.
+        if (!empty($this->mapping[$field])) {
+            // Maatwebsite Excel slugs the headers in the row keys (separator is usually _)
+            $slug = Str::slug($this->mapping[$field], '_');
+            return $row[$slug] ?? null;
+        }
+
+        // Fallback for backward compatibility
+        switch ($field) {
+            case 'article': return $row['article'] ?? $row['artcod'] ?? null;
+            case 'designation': return $row['désignation']  ?? $row['designation'] ?? $row['libelle'] ?? null;
+            case 'initial': return $row['initial'] ?? $row['init'] ?? null;
+            case 'entree': return $row['entree'] ?? $row['achat'] ?? null;
+            case 'sortie': return $row['sortie'] ?? $row['vente'] ?? null;
+            case 'finale': return $row['finale'] ?? $row['final'] ?? null;
+            case 'pump': return $row['pump'] ?? $row['pmp'] ?? null;
+            case 'valeur': return $row['valeur'] ?? $row['montant'] ?? null;
+            default: return null;
+        }
+    }
+
     private function toDecimal($v): ?float
     {
         if ($v === null) return null;
@@ -114,5 +169,7 @@ class StockImport implements ToModel, WithHeadingRow, SkipsEmptyRows, WithChunkR
         $s = str_replace(',', '.', $s);
         return is_numeric($s) ? (float)$s : null;
     }
+
+
 }
 

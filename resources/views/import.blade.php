@@ -3,12 +3,19 @@
 @section('content')
     <!-- Loading Overlay -->
     <div id="loadingOverlay" class="fixed inset-0 bg-gray-900 bg-opacity-50 z-50 flex items-center justify-center hidden">
-        <div class="bg-white p-8 rounded-lg shadow-xl text-center max-w-sm mx-4">
-            <div class="loader ease-linear rounded-full border-8 border-t-8 border-gray-200 h-16 w-16 mx-auto mb-4"></div>
+        <div class="bg-white p-8 rounded-lg shadow-xl text-center max-w-md mx-4 w-full">
+            <div id="loadingSpinner" class="loader ease-linear rounded-full border-8 border-t-8 border-gray-200 h-16 w-16 mx-auto mb-4 border-indigo-600"></div>
             <h2 class="text-xl font-bold text-gray-800 mb-2">Import en cours...</h2>
+            
+            <!-- Progress Bar -->
+            <div class="w-full bg-gray-200 rounded-full h-4 mb-1 relative overflow-hidden">
+                <div id="progressBar" class="bg-indigo-600 h-4 rounded-full transition-all duration-300" style="width: 0%"></div>
+            </div>
+            <div id="progressText" class="text-sm text-indigo-700 font-bold mb-4">0%</div>
+
             <p class="text-gray-600 mb-4">Veuillez patienter, ne fermez pas la page.</p>
             <div id="timeEstimate" class="text-sm font-semibold text-indigo-600 bg-indigo-50 py-2 px-4 rounded">
-                Estimation : calcul...
+                Initialisation...
             </div>
         </div>
     </div>
@@ -138,10 +145,9 @@
         document.getElementById('importForm').onsubmit = function() {
             // Show Loading Overlay
             document.getElementById('loadingOverlay').classList.remove('hidden');
-            
-            // Note: with queue/async import, we don't need the estimate logic here as much,
-            // or we can keep it as a "startup" estimate.
-            document.getElementById('timeEstimate').innerText = "Démarrage de l'import...";
+            document.getElementById('progressBar').style.width = '0%';
+            document.getElementById('progressText').innerText = '0%';
+            document.getElementById('timeEstimate').innerText = "Analyse du fichier...";
         };
 
         // Check if we need to poll for progress (Flash session variable passed to view)
@@ -150,33 +156,65 @@
             const statusUrl = "{{ route('import.status') }}?table=" + importTable;
             const estimateDiv = document.getElementById('timeEstimate');
             const overlay = document.getElementById('loadingOverlay');
+            const progressBar = document.getElementById('progressBar');
+            const progressText = document.getElementById('progressText');
+            const spinner = document.getElementById('loadingSpinner');
             
             // Re-open overlay if it was closed (page reload)
             overlay.classList.remove('hidden');
-            estimateDiv.innerText = "Traitement en cours...";
             
+            let isFinished = false;
+
             let pollInterval = setInterval(function() {
+                if (isFinished) return;
+
                 fetch(statusUrl)
                     .then(response => response.json())
                     .then(data => {
-                        estimateDiv.innerText = "Lignes importées : " + data.count;
-                        // Optional: Stop polling if count stops increasing for a while, or let user close.
+                        let pc = data.percent || 0;
+                        let count = data.count || 0;
+                        let total = data.total || '?';
+
+                        estimateDiv.innerText = "Lignes importées : " + count + " / " + total;
+                        
+                        // Update Bar
+                        progressBar.style.width = pc + '%';
+                        progressText.innerText = pc + '%';
+
+                        if (pc >= 100 || (data.total > 0 && count >= data.total)) {
+                             isFinished = true;
+                             estimateDiv.innerHTML = "<span class='text-green-600 font-bold text-lg'>Importation Terminée avec succès !</span>";
+                             spinner.style.display = 'none'; // Hide spinner
+                             
+                             // Add a finish button
+                             if (!document.getElementById('finishBtn')) {
+                                 const btn = document.createElement('a');
+                                 btn.id = 'finishBtn';
+                                 btn.href = "{{ route('consultation.index') }}";
+                                 btn.innerText = "Consulter les données";
+                                 btn.className = "mt-6 inline-block w-full bg-green-600 hover:bg-green-700 text-white font-bold py-3 px-4 rounded shadow transition-colors";
+                                 document.querySelector('#loadingOverlay > div').appendChild(btn);
+                             }
+                             
+                             // Remove Close button if exists
+                             const closeBtn = document.getElementById('closeOverlayBtn');
+                             if(closeBtn) closeBtn.remove();
+                             
+                             clearInterval(pollInterval);
+                        }
                     })
                     .catch(err => console.error(err));
-            }, 2000); // Poll every 2 seconds
+            }, 1000); // Poll every 1 second
 
-            // Allow user to close/hide overlay to continue working while import runs
-            // Add a close button logic or just let them navigate away.
-            // For now, let's append a "Close" button to the overlay for UX.
+            // Add Close Button (only while running)
             const container = document.querySelector('#loadingOverlay > div');
             if (!document.getElementById('closeOverlayBtn')) {
                 const btn = document.createElement('button');
                 btn.id = 'closeOverlayBtn';
-                btn.innerText = "Réduire / Continuer";
-                btn.className = "mt-4 bg-gray-200 hover:bg-gray-300 text-gray-800 font-semibold py-2 px-4 rounded shadow";
+                btn.innerText = "Réduire en arrière-plan";
+                btn.className = "mt-4 text-sm text-gray-500 hover:text-gray-700 underline";
                 btn.onclick = function() {
                     overlay.classList.add('hidden');
-                    clearInterval(pollInterval);
                 };
                 container.appendChild(btn);
             }
