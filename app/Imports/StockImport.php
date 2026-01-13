@@ -2,16 +2,20 @@
 
 namespace App\Imports;
 
+use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Str;
-use Maatwebsite\Excel\Concerns\ToModel;
+use Maatwebsite\Excel\Concerns\ToCollection;
 use Maatwebsite\Excel\Concerns\WithHeadingRow;
-use Maatwebsite\Excel\Concerns\SkipsEmptyRows;
+// use Maatwebsite\Excel\Concerns\SkipsEmptyRows; // Removed
 use Maatwebsite\Excel\Concerns\WithChunkReading;
-
-use Illuminate\Contracts\Queue\ShouldQueue;
 use Maatwebsite\Excel\Concerns\Importable;
+use Maatwebsite\Excel\Events\AfterChunk;
 
-class StockImport implements ToModel, WithHeadingRow, SkipsEmptyRows, WithChunkReading, ShouldQueue
+
+
+class StockImport implements ToCollection, WithHeadingRow, WithChunkReading
 {
     use Importable;
 
@@ -43,50 +47,58 @@ class StockImport implements ToModel, WithHeadingRow, SkipsEmptyRows, WithChunkR
 
     public function chunkSize(): int
     {
-        return 1000; // évite l’overhead mémoire
+        return 1000;
     }
 
-    public function model(array $row)
+    /**
+     * @param Collection $rows
+     */
+    public function collection(Collection $rows)
     {
+        // Update progress: count valid rows processed in this chunk (including skipped ones)
+        Cache::increment("import_processed_{$this->tableName}", $rows->count());
 
-        // Helper to get value based on mapping or fallback
-        // We reuse the public resolveValue helper now
-        $getValue = fn($field) => $this->resolveValue($field, $row);
+        $insertData = [];
 
-        $article     = trim((string)$getValue('article'));
-        $designation  = trim((string)$getValue('designation'));
-        $initial      = $this->toDecimal($getValue('initial'));
-        $entree       = $this->toDecimal($getValue('entree'));
-        $sortie       = $this->toDecimal($getValue('sortie'));
-        $finale       = $this->toDecimal($getValue('finale'));
-        $pump         = $this->toDecimal($getValue('pump'));
-        $valeur       = $this->toDecimal($getValue('valeur'));
+        foreach ($rows as $index => $row) {
+            // Ensure array
+            $rowArray = $row->toArray();
 
+            // Resolve values
+            $article     = trim((string)$this->resolveValue('article', $rowArray));
+            $designation = trim((string)$this->resolveValue('designation', $rowArray));
 
-        if ($article === '') {
-            return null;
+            $initial     = $this->toDecimal($this->resolveValue('initial', $rowArray));
+            $entree      = $this->toDecimal($this->resolveValue('entree', $rowArray));
+            $sortie      = $this->toDecimal($this->resolveValue('sortie', $rowArray));
+            $finale      = $this->toDecimal($this->resolveValue('finale', $rowArray));
+            $pump        = $this->toDecimal($this->resolveValue('pump', $rowArray));
+            $valeur      = $this->toDecimal($this->resolveValue('valeur', $rowArray));
+
+            if ($article === '') {
+                continue;
+            }
+
+            // Skip logic
+            if ($this->shouldSkip($rowArray)) {
+                continue;
+            }
+
+            $insertData[] = [
+                'article'      => $article,
+                'designation'  => $designation,
+                'initial'      => $initial,
+                'entree'       => $entree,
+                'sortie'       => $sortie,
+                'finale'       => $finale,
+                'pump'         => $pump,
+                'valeur'       => $valeur,
+            ];
         }
-        // --------- RÈGLES DE FILTRAGE : ignorer les lignes "groupe" / "total" / titres ----------
-        if ($this->shouldSkip($row)) {
-            return null; // skip
+
+        if (!empty($insertData)) {
+            DB::table($this->tableName)->insert($insertData);
         }
-
-        // Si nécessaire, filtre aussi les lignes où l’article n’est pas un code attendu
-        // (ex: garder uniquement numériques)
-        // if (!ctype_digit($article)) return null;
-//        dd($row, $entree, $sortie, $finale, $pump, $valeur);
-        $model = new \App\Models\DynamicStock();
-        $model->setTable($this->tableName);
-        $model->article      = $article;
-        $model->designation  = $designation;
-        $model->initial      = $initial;
-        $model->entree       = $entree;
-        $model->sortie       = $sortie;
-        $model->finale       = $finale;
-        $model->pump    = $pump;   // adapte le nom de colonne selon ta migration
-        $model->valeur       = $valeur;
-
-        return $model;
     }
 
     /**
@@ -140,11 +152,50 @@ class StockImport implements ToModel, WithHeadingRow, SkipsEmptyRows, WithChunkR
      */
     public function resolveValue(string $field, array $row)
     {
+        if (!empty($this->mapping[$field])) {
+            $key = $this->mapping[$field];
+
+            // 1. Try exact match (if headers are not slugged)
+            if (isset($row[$key])) {
+                return $row[$key];
+            }
+
+            // 2. Try slugged match (standard Laravel Excel behavior)
+            $slug = Str::slug($key, '_');
+            if (isset($row[$slug])) {
+                return $row[$slug];
+            }
+            
+            // 3. Try no-separator slug (sometimes just lowercase)
+             $slugNoSep = Str::slug($key, '');
+            if (isset($row[$slugNoSep])) {
+                return $row[$slugNoSep];
+            }
+
+            return null;
+        }
+
+        return match ($field) {
+            'article' => $row['article'] ?? $row['artcod'] ?? null,
+            'designation' => $row['designation'] ?? $row['libelle'] ?? null,
+            'initial' => $row['initial'] ?? null,
+            'entree' => $row['entree'] ?? null,
+            'sortie' => $row['sortie'] ?? null,
+            'finale' => $row['finale'] ?? null,
+            'pump' => $row['pump'] ?? $row['pmp'] ?? null,
+            'valeur' => $row['valeur'] ?? null,
+            default => null,
+        };
+    }
+
+    public function _resolveValue(string $field, array $row)
+    {
         // If we have a mapping for this field, use it.
         if (!empty($this->mapping[$field])) {
             // Maatwebsite Excel slugs the headers in the row keys (separator is usually _)
             $slug = Str::slug($this->mapping[$field], '_');
-            return $row[$slug] ?? null;
+            // return $row[$slug] ?? null;
+            return $row[$this->mapping[$field]] ?? null;
         }
 
         // Fallback for backward compatibility
@@ -159,6 +210,23 @@ class StockImport implements ToModel, WithHeadingRow, SkipsEmptyRows, WithChunkR
             case 'valeur': return $row['valeur'] ?? $row['montant'] ?? null;
             default: return null;
         }
+    }
+    public function registerEvents(): array
+    {
+        return [
+            AfterChunk::class => function(AfterChunk $event) {
+                // nombre de lignes lues dans ce chunk
+//                $size = count($event->getConcernable()->getRows() ?? []);
+//                Cache::increment("import_processed_{$this->tableName}", $size);
+                static $buffer = 0;
+                $buffer++;
+
+                if ($buffer >= 200) {
+                    Cache::increment("import_processed_{$this->tableName}", $buffer);
+                    $buffer = 0;
+                }
+            },
+        ];
     }
 
     private function toDecimal($v): ?float

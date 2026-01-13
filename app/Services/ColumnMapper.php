@@ -2,138 +2,173 @@
 
 namespace App\Services;
 
+//use Illuminate\Support\Str;
 use Illuminate\Support\Str;
-
 class ColumnMapper
 {
+
+    private array $aliasIndex = [];
+
     /**
-     * Map file headers to required database columns using fuzzy matching.
-     *
-     * @param array $fileHeaders List of headers from the file
-     * @param array $requiredColumns List of required database columns (slugs)
-     * @return array Mapping result ['mapping' => [], 'confidence' => [], 'missing' => []]
+     * @param array $requiredColumns
+     * @return void
      */
-    public function mapHeaders(array $fileHeaders, array $requiredColumns): array
+    private function _buildAliasIndex(array $requiredColumns): void
     {
-        $mapping = [];
-        $confidence = [];
-        $usedHeaders = [];
+        $syn = $this->synonyms();
+        $idx = [];
 
-        // Dictionary of common synonyms for our specific domain
-        $synonyms = [
-            'initial' => ['debut', 'start', 'depart', 'qte_init', 'stock_init', 'stock_depart', 'ouv'],
-            'entree' => ['in', 'achat', 'reception', 'entrees', 'qte_entree'],
-            'sortie' => ['out', 'vente', 'conso', 'consommation', 'sorties', 'qte_sortie'],
-            'finale' => ['fin', 'final', 'solde', 'restant', 'qte_fin', 'stock_fin', 'actuel'],
-            'article' => ['code', 'ref', 'reference', 'art', 'id', 'item', 'numero'],
-            'designation' => ['libelle', 'des', 'description', 'nom', 'intitule'],
-            'pump' => ['pmp', 'cout_unitaire', 'prix_moyen', 'pu'],
-            'valeur' => ['montant', 'total_valeur', 'val', 'valorisation'],
-        ];
+        foreach ($requiredColumns as $req) {
+            $idx[$this->norm($req)] = $req;
 
-        // Normalisation helper
-        $normalize = function ($str) {
-            return Str::slug($str, '');
-        };
+            foreach (($syn[$req] ?? []) as $alias) {
+                $idx[$this->norm($alias)] = $req;
+            }
+        }
+        $this->aliasIndex = $idx;
+    }
+    public function mapHeaders(array $row, array $requiredColumns): array
+    {
+        $headers = array_values(array_map(fn($v) => trim((string)$v), $row));
 
-        $normalizedFileHeaders = [];
-        foreach ($fileHeaders as $index => $header) {
-            $normalizedFileHeaders[$index] = $normalize($header);
+        // Normaliser une fois
+        $normHeaders = [];
+        foreach ($headers as $i => $h) {
+            if ($h === '') continue;
+            $normHeaders[$i] = $this->norm($h);
         }
 
-        foreach ($requiredColumns as $reqCol) {
-            $bestMatch = null;
-            $bestScore = -1; // Higher is better
-            $bestHeaderIndex = null;
+        // Index inversé "alias_normalisé => champ requis"
+        $aliasIndex = $this->buildAliasIndex($requiredColumns);
 
-            $reqColNorm = $normalize($reqCol);
-            
-            // 1. Exact Match
-            foreach ($normalizedFileHeaders as $index => $fileHeaderNorm) {
-                if ($fileHeaderNorm === $reqColNorm) {
-                    $bestMatch = $fileHeaders[$index];
-                    $bestHeaderIndex = $index;
-                    $bestScore = 100;
+        $mapping = [];
+        $confidence = [];
+
+        foreach ($requiredColumns as $req) {
+            $mapping[$req] = null;
+            $confidence[$req] = 0;
+        }
+
+        foreach ($normHeaders as $idx => $nh) {
+            // match exact alias -> champ
+            if (isset($aliasIndex[$nh])) {
+                $field = $aliasIndex[$nh];
+
+                // Determine score: 100 for exact match, 95 for synonym
+                // We assume $field is already normalized (e.g. 'article')
+                $isExact = ($nh === $this->norm($field));
+                $score = $isExact ? 100 : 95;
+
+                // Si score > confiance actuelle, on prend ce mapping
+                if ($score > $confidence[$field]) {
+                    $mapping[$field] = $headers[$idx]; // on garde le titre original
+                    $confidence[$field] = $score;
+                }
+                continue;
+            }
+
+            // match "contains" (stock_depart_qte contient stock_depart)
+            foreach ($aliasIndex as $aliasNorm => $field) {
+                // Skip if we already have a strong match
+                if ($confidence[$field] >= 95) continue;
+
+                // Avoid false positives with short synonyms (e.g. "in" matching "initial")
+                if (strlen($aliasNorm) < 3) continue;
+
+                if (str_contains($nh, $aliasNorm) || str_contains($aliasNorm, $nh)) {
+                     // Check if better than existing contains match
+                    if ($confidence[$field] < 85) {
+                        $mapping[$field] = $headers[$idx];
+                        $confidence[$field] = 85;
+                    }
+                }
+            }
+        }
+
+        // Fuzzy léger uniquement si encore non trouvé
+        foreach ($requiredColumns as $req) {
+            if ($confidence[$req] >= 85) continue;
+
+            $bestIdx = null;
+            $bestScore = 0;
+
+            foreach ($normHeaders as $idx => $nh) {
+                if (strlen($nh) < 4) continue;
+                $dist = levenshtein($nh, $req);
+                if ($dist <= 2) {
+                    $bestIdx = $idx;
+                    $bestScore = 70;
                     break;
                 }
             }
 
-            // 2. Contains Match & Synonyms (if no exact match)
-            if ($bestScore < 100) {
-                foreach ($normalizedFileHeaders as $index => $fileHeaderNorm) {
-                    if (in_array($index, $usedHeaders)) continue;
-
-                    // Direct containment
-                    if (str_contains($fileHeaderNorm, $reqColNorm) || str_contains($reqColNorm, $fileHeaderNorm)) {
-                        $currentScore = 80;
-                         if ($currentScore > $bestScore) {
-                            $bestMatch = $fileHeaders[$index];
-                            $bestHeaderIndex = $index;
-                            $bestScore = $currentScore;
-                        }
-                    }
-
-                    // Synonyms
-                    if (isset($synonyms[$reqCol])) {
-                        foreach ($synonyms[$reqCol] as $syn) {
-                            $synNorm = $normalize($syn);
-                             if (str_contains($fileHeaderNorm, $synNorm)) {
-                                $currentScore = 75; // Slightly lower than direct containment
-                                if ($currentScore > $bestScore) {
-                                    $bestMatch = $fileHeaders[$index];
-                                    $bestHeaderIndex = $index;
-                                    $bestScore = $currentScore;
-                                }
-                            }
-                            
-                            // Levenshtein on synonyms
-                             $lev = levenshtein($fileHeaderNorm, $synNorm);
-                             $maxLength = max(strlen($fileHeaderNorm), strlen($synNorm));
-                             $similarity = 100 - (($lev / $maxLength) * 100);
-
-                             if ($similarity > 80) { // High similarity to synonym
-                                 $currentScore = 70;
-                                 if ($currentScore > $bestScore) {
-                                     $bestMatch = $fileHeaders[$index];
-                                     $bestHeaderIndex = $index;
-                                     $bestScore = $currentScore;
-                                 }
-                             }
-                        }
-                    }
-                    
-                    // Direct Levenshtein on column name
-                     $lev = levenshtein($fileHeaderNorm, $reqColNorm);
-                     $maxLength = max(strlen($fileHeaderNorm), strlen($reqColNorm));
-                     $similarity = 100 - (($lev / $maxLength) * 100);
-                     
-                     if ($similarity > 70) {
-                         $currentScore = 60; // Fuzzy match
-                         if ($currentScore > $bestScore) {
-                             $bestMatch = $fileHeaders[$index];
-                             $bestHeaderIndex = $index;
-                             $bestScore = $currentScore;
-                         }
-                     }
-                }
-            }
-
-            if ($bestMatch !== null) {
-                $mapping[$reqCol] = $bestMatch;
-                $confidence[$reqCol] = $bestScore;
-                if ($bestScore >= 90) { // Only mark as used if we are fairly confident
-                    $usedHeaders[] = $bestHeaderIndex; 
-                }
-            } else {
-                $mapping[$reqCol] = ''; // No match found
-                $confidence[$reqCol] = 0;
+            if ($bestIdx !== null && $bestScore > $confidence[$req]) {
+                $mapping[$req] = $headers[$bestIdx];
+                $confidence[$req] = $bestScore;
             }
         }
 
         return [
             'mapping' => $mapping,
             'confidence' => $confidence,
-            'file_headers' => $fileHeaders
         ];
     }
+
+    private function norm(string $s): string
+    {
+        // normalisation robuste (accents, espaces, ponctuation)
+        $s = trim(mb_strtolower($s));
+        $s = str_replace(['°', '’', "'", '"', '(', ')', '[', ']', '{', '}', ':', ';', ',', '.', "\n", "\r", "\t"], ' ', $s);
+        $s = preg_replace('/\s+/', ' ', $s);
+        return Str::slug($s, '_'); // ex: "Stock départ" => "stock_depart"
+    }
+
+    private function synonyms(): array
+    {
+        return [
+            'article' => [
+                'article', 'code_article', 'art', 'artcod', 'code', 'reference', 'ref', 'article_code'
+            ],
+            'designation' => [
+                'designation', 'désignation', 'libelle', 'libellé', 'produit', 'description', 'intitule', 'intitulé'
+            ],
+            'initial' => [
+                'initial', 'stock_initial', 'stock_depart', 'stock_debut', 'depart', 'debut',
+                'solde_initial', 'stock_au_debut', 'stock_de_depart', 'qte_init'
+            ],
+            'entree' => [
+                'entree', 'entrée', 'entrees', 'entrées', 'achat', 'achats', 'reception', 'réception', 'in', 'qte_entree'
+            ],
+            'sortie' => [
+                'sortie', 'sorties', 'vente', 'ventes', 'consommation', 'consommations', 'out', 'qte_sortie'
+            ],
+            'finale' => [
+                'finale', 'final', 'stock_final', 'stock_fin', 'fin', 'solde_final',
+                'stock_finale', 'stock_a_la_fin', 'qte_fin', 'restant', 'actuel'
+            ],
+            'pump' => [
+                'pump', 'pmp', 'prix_moyen', 'prix_moyen_pondere', 'prix_moyen_pondéré', 'pm', 'p_m_p', 'cout_unitaire', 'pu'
+            ],
+            'valeur' => [
+                'valeur', 'montant', 'valeur_stock', 'total', 'valeur_totale', 'amount', 'total_valeur', 'val', 'valorisation'
+            ],
+        ];
+    }
+
+    private function buildAliasIndex(array $requiredColumns): array
+    {
+        $syn = $this->synonyms();
+        $idx = [];
+
+        foreach ($requiredColumns as $req) {
+            $idx[$this->norm($req)] = $req;
+
+            foreach (($syn[$req] ?? []) as $alias) {
+                $idx[$this->norm($alias)] = $req;
+            }
+        }
+
+        return $idx;
+    }
+
 }

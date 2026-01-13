@@ -3,7 +3,7 @@
 @section('content')
 <div class="container mx-auto px-4 py-8">
     <h1 class="text-3xl font-bold mb-4 text-indigo-700">Vérification du Mappage des Colonnes</h1>
-    
+
     <div class="bg-yellow-50 border-l-4 border-yellow-400 p-4 mb-6">
         <div class="flex">
             <div class="flex-shrink-0">
@@ -13,7 +13,7 @@
             </div>
             <div class="ml-3">
                 <p class="text-sm text-yellow-700">
-                    Les entêtes de votre fichier ne correspondent pas exactement au standard. 
+                    Les entêtes de votre fichier ne correspondent pas exactement au standard.
                     Notre assistant intelligent a suggéré des correspondances. Merci de les vérifier.
                 </p>
             </div>
@@ -25,9 +25,9 @@
         <input type="hidden" name="file_path" value="{{ $file_path }}">
         <input type="hidden" name="table_name" value="{{ $table_name }}">
         <input type="hidden" name="heading_row" value="{{ $heading_row }}">
-        
-        <!-- Pass original params implicitly via table naming, or if logic needs them later? 
-             The controller processMappedImport only needs file and table name usually, 
+
+        <!-- Pass original params implicitly via table naming, or if logic needs them later?
+             The controller processMappedImport only needs file and table name usually,
              but if table creation happens then, we rely on table name parsing or existing logic.
              Controller uses 'table_name' directly. -->
 
@@ -42,12 +42,13 @@
                     <svg class="w-6 h-6 text-indigo-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 8l4 4m0 0l-4 4m4-4H3"></path>
                     </svg>
-                    
+
                     <div class="flex-1">
                         <select name="mapping[{{ $col }}]" class="block appearance-none w-full bg-white border border-gray-400 hover:border-gray-500 px-4 py-2 pr-8 rounded shadow leading-tight focus:outline-none focus:shadow-outline">
                             <option value="">-- Ignorer / Non trouvé --</option>
-                            @foreach($analysis['file_headers'] as $header)
-                                <option value="{{ $header }}" 
+                            @php($file_headers = $file_headers ?? [])
+                            @foreach($file_headers as $header)
+                                <option value="{{ $header }}"
                                     @if(
                                         (isset($analysis['mapping'][$col]) && $analysis['mapping'][$col] === $header)
                                     ) selected @endif
@@ -58,9 +59,9 @@
                         </select>
                     </div>
                 </div>
-                
+
                 <div class="text-xs text-center text-gray-500 mt-2">
-                    Confiance IA: 
+                    Confiance IA:
                     <span class="font-bold @if(($analysis['confidence'][$col] ?? 0) > 90) text-green-600 @elseif(($analysis['confidence'][$col] ?? 0) > 60) text-yellow-600 @else text-red-600 @endif">
                         {{ $analysis['confidence'][$col] ?? 0 }}%
                     </span>

@@ -11,11 +11,15 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\Cache; // Added
 use Maatwebsite\Excel\Facades\Excel;
+use App\Services\HeaderScanner;
 use Maatwebsite\Excel\HeadingRowImport;
 use App\Imports\StockImport;
 use App\Services\ColumnMapper;
 use Maatwebsite\Excel\Concerns\ToArray;
 use Maatwebsite\Excel\Concerns\WithLimit;
+use App\Jobs\ImportStockJob;
+use Maatwebsite\Excel\Imports\HeadingRowFormatter;
+use App\Services\FastHeaderDetector;
 
 class StockImportController extends Controller
 {
@@ -30,7 +34,175 @@ class StockImportController extends Controller
     /**
      * Handle the file upload and initial analysis.
      */
+
+    public function _import(Request $request, ColumnMapper $mapper){
+        $request->validate([
+            'annee' => 'required|numeric|digits:4',
+            'programme' => 'required|string|in:EF,GD',
+            'reseau' => 'required|string|in:BUS,FERRE',
+            'file' => 'required|file|mimes:xlsx,xls,csv',
+        ]);
+
+        $annee = $request->input('annee');
+        $programme = strtoupper($request->input('programme'));
+        $reseau = strtoupper($request->input('reseau'));
+        $tableName = "RES_{$programme}_{$reseau}_{$annee}";
+
+        if (Schema::hasTable($tableName) && DB::table($tableName)->count() > 0) {
+            return back()->withErrors([
+                'table_name' => "La table '$tableName' existe déjà et contient des données."
+            ]);
+        }
+
+        $file = $request->file('file');
+        $path = $file->store('temp_imports');
+        $fullPath = Storage::path($path);
+
+        try {
+            $requiredColumns = ['article','designation','initial','entree','sortie','finale','pump','valeur'];
+
+            $scanner = new HeaderScanner($mapper, $requiredColumns);
+            try {
+                Excel::import($scanner, $fullPath);
+            } catch (\Exception $e) {}
+
+            $bestRowIndex = $scanner->bestRow ?: 1;
+            $bestAnalysis = $scanner->bestAnalysis;
+
+            /*  NOUVEAU : lecture réelle des titres */
+            // On laisse le formatter par défaut (slug)
+            $headings = (new HeadingRowImport($bestRowIndex))->toArray($fullPath);
+            $fileHeaders = $headings[0][0] ?? [];
+
+            $fileHeaders = array_values(array_filter(array_map(
+                fn($h) => trim((string)$h),
+                $fileHeaders
+            )));
+
+            $perfectMatch = true;
+            foreach ($requiredColumns as $col) {
+                if (($bestAnalysis['confidence'][$col] ?? 0) < 100) {
+                    $perfectMatch = false;
+                    break;
+                }
+            }
+
+            if ($perfectMatch) {
+                return $this->doImport(
+                    $fullPath,
+                    $tableName,
+                    $bestAnalysis['mapping'],
+                    $bestRowIndex,
+                    $path
+                );
+            }
+
+            return view('import_mapping', [
+                'analysis' => $bestAnalysis,
+//                'file_headers' => $fileHeaders, // ✅ IMPORTANT
+                'file_headers' => $fileHeaders ?? [],
+                'file_path' => $path,
+                'table_name' => $tableName,
+                'required_columns' => $requiredColumns,
+                'heading_row' => $bestRowIndex,
+                'annee' => $annee,
+                'programme' => $programme,
+                'reseau' => $reseau,
+            ]);
+
+        } catch (\Exception $e) {
+            Storage::delete($path);
+            return back()->withErrors(['file' => $e->getMessage()]);
+        }
+    }
     public function import(Request $request, ColumnMapper $mapper)
+    {
+        $request->validate([
+            'annee' => 'required|numeric|digits:4',
+            'programme' => 'required|string|in:EF,GD',
+            'reseau' => 'required|string|in:BUS,FERRE',
+            'file' => 'required|file|mimes:xlsx,xls,csv',
+        ]);
+
+        $annee = $request->input('annee');
+        $programme = strtoupper($request->input('programme'));
+        $reseau = strtoupper($request->input('reseau'));
+        $tableName = "RES_{$programme}_{$reseau}_{$annee}";
+
+        if (Schema::hasTable($tableName) && DB::table($tableName)->count() > 0) {
+            return back()->withErrors([
+                'table_name' => "La table '$tableName' existe déjà et contient des données."
+            ]);
+        }
+
+        $file = $request->file('file');
+        $path = $file->store('temp_imports');
+        $fullPath = Storage::path($path);
+
+        try {
+            $requiredColumns = ['article','designation','initial','entree','sortie','finale','pump','valeur'];
+
+//            $scanner = new HeaderScanner($mapper, $requiredColumns);
+//            try {
+//                Excel::import($scanner, $fullPath);
+//            } catch (\Exception $e) {}
+            $detector = new \App\Services\FastHeaderDetector($mapper);
+            $result = $detector->detect($fullPath, $requiredColumns, 10);
+            $bestRowIndex = $result['bestRow'];
+            $bestAnalysis = $result['bestAnalysis'];
+//            $bestRowIndex = $scanner->bestRow ?: 1;
+//            $bestAnalysis = $scanner->bestAnalysis;
+
+            /*  NOUVEAU : lecture réelle des titres */
+            // On laisse le formatter par défaut (slug)
+            $headings = (new HeadingRowImport($bestRowIndex))->toArray($fullPath);
+            $fileHeaders = $headings[0][0] ?? [];
+
+            $fileHeaders = array_values(array_filter(array_map(
+                fn($h) => trim((string)$h),
+                $fileHeaders
+            )));
+
+            $perfectMatch = true;
+            foreach ($requiredColumns as $col) {
+                // On accepte soit Exact (100) soit Synonyme (95) comme "Automatique"
+                // On demande validation si c'est Fuzzy (< 90)
+                if (($bestAnalysis['confidence'][$col] ?? 0) < 90) {
+                    $perfectMatch = false;
+                    break;
+                }
+            }
+
+            if ($perfectMatch) {
+                return $this->doImport(
+                    $fullPath,
+                    $tableName,
+                    $bestAnalysis['mapping'],
+                    $bestRowIndex,
+                    $path
+                );
+            }
+
+            return view('import_mapping', [
+                'analysis' => $bestAnalysis,
+//                'file_headers' => $fileHeaders, // ✅ IMPORTANT
+                'file_headers' => $fileHeaders ?? [],
+                'file_path' => $path,
+                'table_name' => $tableName,
+                'required_columns' => $requiredColumns,
+                'heading_row' => $bestRowIndex,
+                'annee' => $annee,
+                'programme' => $programme,
+                'reseau' => $reseau,
+            ]);
+
+        } catch (\Exception $e) {
+            Storage::delete($path);
+            return back()->withErrors(['file' => $e->getMessage()]);
+        }
+    }
+
+    public function _importOld(Request $request, ColumnMapper $mapper)
     {
         $request->validate([
             'annee' => 'required|numeric|digits:4',
@@ -67,58 +239,29 @@ class StockImportController extends Controller
             $bestAnalysis = [];
 
 
+            // Use HeaderScanner for streaming header detection
             try {
-                // OPTIMIZATION: Read first 20 rows ONCE instead of looping 20 times opening the file
-                $start = microtime(true);
-                $preview = Excel::toArray(new class implements ToArray, WithLimit {
-                    public function array(array $array){}
-                    public function limit(): int { return 10; }
-                }, $fullPath);
-
-                // Get first sheet
-                $rows = $preview[0] ?? [];
+                $scanner = new HeaderScanner($mapper, $requiredColumns);
+                Excel::import($scanner, $fullPath);
+                $bestRowIndex = $scanner->bestRow;
+                $bestAnalysis = $scanner->bestAnalysis;
             } catch (\Exception $e) {
-                 // Fallback or just empty
-                 $rows = [];
+                // In case of early stop or errors, continue with whatever was gathered
             }
 
-            // Iterate rows 1 to 20 (or fewer if file is small)
-            foreach ($rows as $index => $row) {
-                $i = $index + 1; // Excel row number (1-based)
 
-                $fileHeaders = $row;
-
-                // Skip empty rows
-                if (empty(array_filter($fileHeaders))) continue;
-
-                $analysis = $mapper->mapHeaders($fileHeaders, $requiredColumns);
-
-                // Score = number of columns with decent confidence (> 60%)
-                $score = 0;
-                foreach ($analysis['confidence'] as $conf) {
-                    if ($conf > 60) $score++;
-                }
-
-                if ($score > $bestScore) {
-                    $bestScore = $score;
-                    $bestRowIndex = $i;
-                    $bestAnalysis = $analysis;
-                }
-
-                // If we found a row with > 5 matches, it's likely the one, stop early optimization
-                if ($score >= 6) {
-                    break;
-                }
-            }
 
             // If analysis failed totally (empty file?), fallback to row 1
             if (empty($bestAnalysis)) {
-                $headings = (new HeadingRowImport(1))->toArray($fullPath);
+//                $headings = (new HeadingRowImport(1))->toArray($fullPath);
+//                $fileHeaders = $headings[0][0] ?? [];
+                $headings = (new HeadingRowImport($bestRowIndex))->toArray($fullPath);
                 $fileHeaders = $headings[0][0] ?? [];
+
                 $bestAnalysis = $mapper->mapHeaders($fileHeaders, $requiredColumns);
                 $bestRowIndex = 1;
+                $fileHeaders = array_values(array_map(fn($h) => trim((string)$h), $fileHeaders));
             }
-
             // Check if we have a perfect match on the BEST row
             $perfectMatch = true;
             foreach ($requiredColumns as $col) {
@@ -131,12 +274,13 @@ class StockImportController extends Controller
             if ($perfectMatch) {
                 // Determine mapping from analysis (it's just key => value)
                 $mapping = $bestAnalysis['mapping'];
-                return $this->doImport($fullPath, $tableName, $mapping, $bestRowIndex);
+                return $this->doImport($fullPath, $tableName, $mapping, $bestRowIndex, $path);
             } else {
                 // Redirect to mapping verification
                 return view('import_mapping', [
                     'analysis' => $bestAnalysis,
                     'file_path' => $path,
+                    'file_headers' => $fileHeaders,
                     'table_name' => $tableName,
                     'annee' => $annee, 'programme' => $programme,
                     'reseau' => $reseau,
@@ -171,10 +315,10 @@ class StockImportController extends Controller
             return redirect()->route('import.form')->withErrors(['file' => 'Le fichier temporaire a expiré. Veuillez réessayer.']);
         }
 
-        return $this->doImport($fullPath, $tableName, $mapping, $headingRow);
+        return $this->doImport($fullPath, $tableName, $mapping, $headingRow, $path);
     }
 
-    private function doImport($fullPath, $tableName, $mapping, $headingRow = 1)
+    private function doImport($fullPath, $tableName, $mapping, $headingRow = 1, $relativePath = null)
     {
         // Ensure table creation logic
         if (!Schema::hasTable($tableName)) {
@@ -188,45 +332,15 @@ class StockImportController extends Controller
         }
 
         try {
-            // Calculate Total Rows for Progress tracking efficiently
-            // Wde use a separate lightweight import just for counting to avoid loading everything into memory
-            // Or we check if we can get total rows from metadata (not always reliable with Excel)
+            // Dispatch the job to handle import in background
+            ImportStockJob::dispatch($fullPath, $relativePath, $tableName, $mapping, $headingRow);
 
-            $importer = new StockImport($tableName, $mapping, $headingRow);
+            return redirect()->route('import.form')
+                ->with('success', "Importation lancée vers $tableName. Le traitement se fait en arrière-plan. Suivi en cours...")
+                ->with('import_table', $tableName);
 
-            // OPTIMIZED COUNTING: Don't use toArray() which loads everything.
-            // Use a custom import that just counts.
-            $counter = new class($importer) implements \Maatwebsite\Excel\Concerns\ToModel, \Maatwebsite\Excel\Concerns\WithHeadingRow, \Maatwebsite\Excel\Concerns\WithChunkReading {
-                public int $count = 0;
-                private $parentImporter;
-
-                public function __construct($importer) { $this->parentImporter = $importer; }
-
-                public function model(array $row) {
-                    if (!$this->parentImporter->shouldSkip($row)) {
-                        $this->count++;
-                    }
-                    return null;
-                }
-                public function headingRow(): int { return $this->parentImporter->headingRow(); }
-                public function chunkSize(): int { return 2000; }
-            };
-
-            // Run the counting import (synchronous but chunked, low memory)
-            Excel::import($counter, $fullPath);
-
-            $totalRows = $counter->count;
-
-            Cache::put("import_total_{$tableName}", $totalRows, 3600); // Store for 1 hour
-
-            // ✅ workaround bug Laravel-Excel
-            Excel::clearResolvedInstances();
-            // Pass the mapping AND heading row to the Import class
-            Excel::import(new StockImport($tableName, $mapping, $headingRow), $fullPath);
-//            dd($data,$totalRows);
-            return redirect()->route('import.form')->with('success', "Importation lancée vers $tableName. Suivi en cours...")->with('import_table', $tableName);
         } catch (\Exception $e) {
-            return redirect()->route('import.form')->withErrors(['file' => 'Erreur lors de l\'import : ' . $e->getMessage()]);
+            return redirect()->route('import.form')->withErrors(['file' => 'Erreur lors du lancement de l\'import : ' . $e->getMessage()]);
         }
     }
 
@@ -238,16 +352,23 @@ class StockImportController extends Controller
         }
 
         if (Schema::hasTable($tableName)) {
-            $count = DB::table($tableName)->count();
+            // Count from Cache is more accurate for progress (includes skipped rows)
+            $processed = Cache::get("import_processed_{$tableName}");
+            
+            // Fallback to DB count if cache is empty (e.g. page refresh after long time)
+            if ($processed === null) {
+                $processed = DB::table($tableName)->count();
+            }
+            
             $total = Cache::get("import_total_{$tableName}") ?? 0;
 
             $percent = 0;
             if ($total > 0) {
-                $percent = round(($count / $total) * 100);
+                $percent = round(($processed / $total) * 100);
                 if ($percent > 100) $percent = 100;
             }
 
-            return response()->json(['count' => $count, 'percent' => $percent, 'total' => $total]);
+            return response()->json(['count' => $processed, 'percent' => $percent, 'total' => $total]);
         }
 
         return response()->json(['count' => 0, 'percent' => 0, 'total' => 0]);
