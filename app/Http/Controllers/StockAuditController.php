@@ -88,6 +88,7 @@ class StockAuditController extends Controller
 
             FROM
                 $efTable AS ef
+
             RIGHT JOIN
                 (
                     SELECT
