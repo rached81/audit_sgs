@@ -35,86 +35,7 @@ class StockImportController extends Controller
      * Handle the file upload and initial analysis.
      */
 
-    public function _import(Request $request, ColumnMapper $mapper){
-        $request->validate([
-            'annee' => 'required|numeric|digits:4',
-            'programme' => 'required|string|in:EF,GD',
-            'reseau' => 'required|string|in:BUS,FERRE',
-            'file' => 'required|file|mimes:xlsx,xls,csv',
-        ]);
 
-        $annee = $request->input('annee');
-        $programme = strtoupper($request->input('programme'));
-        $reseau = strtoupper($request->input('reseau'));
-        $tableName = "RES_{$programme}_{$reseau}_{$annee}";
-
-        if (Schema::hasTable($tableName) && DB::table($tableName)->count() > 0) {
-            return back()->withErrors([
-                'table_name' => "La table '$tableName' existe déjà et contient des données."
-            ]);
-        }
-
-        $file = $request->file('file');
-        $path = $file->store('temp_imports');
-        $fullPath = Storage::path($path);
-
-        try {
-            $requiredColumns = ['article','designation','initial','entree','sortie','finale','pump','valeur'];
-
-            $scanner = new HeaderScanner($mapper, $requiredColumns);
-            try {
-                Excel::import($scanner, $fullPath);
-            } catch (\Exception $e) {}
-
-            $bestRowIndex = $scanner->bestRow ?: 1;
-            $bestAnalysis = $scanner->bestAnalysis;
-
-            /*  NOUVEAU : lecture réelle des titres */
-            // On laisse le formatter par défaut (slug)
-            $headings = (new HeadingRowImport($bestRowIndex))->toArray($fullPath);
-            $fileHeaders = $headings[0][0] ?? [];
-
-            $fileHeaders = array_values(array_filter(array_map(
-                fn($h) => trim((string)$h),
-                $fileHeaders
-            )));
-
-            $perfectMatch = true;
-            foreach ($requiredColumns as $col) {
-                if (($bestAnalysis['confidence'][$col] ?? 0) < 100) {
-                    $perfectMatch = false;
-                    break;
-                }
-            }
-
-            if ($perfectMatch) {
-                return $this->doImport(
-                    $fullPath,
-                    $tableName,
-                    $bestAnalysis['mapping'],
-                    $bestRowIndex,
-                    $path
-                );
-            }
-
-            return view('import_mapping', [
-                'analysis' => $bestAnalysis,
-//                'file_headers' => $fileHeaders, // ✅ IMPORTANT
-                'file_headers' => $fileHeaders ?? [],
-                'file_path' => $path,
-                'table_name' => $tableName,
-                'required_columns' => $requiredColumns,
-                'heading_row' => $bestRowIndex,
-                'annee' => $annee,
-                'programme' => $programme,
-                'reseau' => $reseau,
-            ]);
-
-        } catch (\Exception $e) {
-            Storage::delete($path);
-            return back()->withErrors(['file' => $e->getMessage()]);
-        }
-    }
     public function import(Request $request, ColumnMapper $mapper)
     {
         $request->validate([
@@ -202,98 +123,6 @@ class StockImportController extends Controller
         }
     }
 
-    public function _importOld(Request $request, ColumnMapper $mapper)
-    {
-        $request->validate([
-            'annee' => 'required|numeric|digits:4',
-            'programme' => 'required|string|in:EF,GD',
-            'reseau' => 'required|string|in:BUS,FERRE',
-            'file' => 'required|file|mimes:xlsx,xls,csv',
-        ]);
-
-        $annee = $request->input('annee');
-        $programme = strtoupper($request->input('programme'));
-        $reseau = strtoupper($request->input('reseau'));
-        $tableName = "RES_{$programme}_{$reseau}_{$annee}";
-
-        // 1. Check Table Status (Fail early if table exists and has data)
-        if (Schema::hasTable($tableName)) {
-            $count = DB::table($tableName)->count();
-            if ($count > 0) {
-                 return back()->withErrors(['table_name' => "La table '$tableName' existe déjà et contient $count lignes. Veuillez choisir un autre nom ou vider la table manuellement."]);
-            }
-        }
-
-        $file = $request->file('file');
-
-        // 2. Store file temporarily
-        $path = $file->store('temp_imports');
-        $fullPath = Storage::path($path);
-
-        // 3. Analyze Headers - Scan first 20 rows to find best header candidate
-        try {
-            $requiredColumns = ['article', 'designation', 'initial', 'entree', 'sortie', 'finale', 'pump', 'valeur'];
-
-            $bestRowIndex = 1;
-            $bestScore = -1;
-            $bestAnalysis = [];
-
-
-            // Use HeaderScanner for streaming header detection
-            try {
-                $scanner = new HeaderScanner($mapper, $requiredColumns);
-                Excel::import($scanner, $fullPath);
-                $bestRowIndex = $scanner->bestRow;
-                $bestAnalysis = $scanner->bestAnalysis;
-            } catch (\Exception $e) {
-                // In case of early stop or errors, continue with whatever was gathered
-            }
-
-
-
-            // If analysis failed totally (empty file?), fallback to row 1
-            if (empty($bestAnalysis)) {
-//                $headings = (new HeadingRowImport(1))->toArray($fullPath);
-//                $fileHeaders = $headings[0][0] ?? [];
-                $headings = (new HeadingRowImport($bestRowIndex))->toArray($fullPath);
-                $fileHeaders = $headings[0][0] ?? [];
-
-                $bestAnalysis = $mapper->mapHeaders($fileHeaders, $requiredColumns);
-                $bestRowIndex = 1;
-                $fileHeaders = array_values(array_map(fn($h) => trim((string)$h), $fileHeaders));
-            }
-            // Check if we have a perfect match on the BEST row
-            $perfectMatch = true;
-            foreach ($requiredColumns as $col) {
-                if (($bestAnalysis['confidence'][$col] ?? 0) < 100) {
-                    $perfectMatch = false;
-                    break;
-                }
-            }
-
-            if ($perfectMatch) {
-                // Determine mapping from analysis (it's just key => value)
-                $mapping = $bestAnalysis['mapping'];
-                return $this->doImport($fullPath, $tableName, $mapping, $bestRowIndex, $path);
-            } else {
-                // Redirect to mapping verification
-                return view('import_mapping', [
-                    'analysis' => $bestAnalysis,
-                    'file_path' => $path,
-                    'file_headers' => $fileHeaders,
-                    'table_name' => $tableName,
-                    'annee' => $annee, 'programme' => $programme,
-                    'reseau' => $reseau,
-                    'required_columns' => $requiredColumns,
-                    'heading_row' => $bestRowIndex
-                ]);
-            }
-
-        } catch (\Exception $e) {
-            Storage::delete($path);
-            return back()->withErrors(['file' => 'Impossible de lire le fichier : ' . $e->getMessage()]);
-        }
-    }
 
     public function     processMappedImport(Request $request)
     {
@@ -354,12 +183,12 @@ class StockImportController extends Controller
         if (Schema::hasTable($tableName)) {
             // Count from Cache is more accurate for progress (includes skipped rows)
             $processed = Cache::get("import_processed_{$tableName}");
-            
+
             // Fallback to DB count if cache is empty (e.g. page refresh after long time)
             if ($processed === null) {
                 $processed = DB::table($tableName)->count();
             }
-            
+
             $total = Cache::get("import_total_{$tableName}") ?? 0;
 
             $percent = 0;
