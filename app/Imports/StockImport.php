@@ -3,17 +3,15 @@
 namespace App\Imports;
 
 use Illuminate\Support\Collection;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
-use Maatwebsite\Excel\Concerns\ToCollection;
-use Maatwebsite\Excel\Concerns\WithHeadingRow;
-// use Maatwebsite\Excel\Concerns\SkipsEmptyRows; // Removed
-use Maatwebsite\Excel\Concerns\WithChunkReading;
 use Maatwebsite\Excel\Concerns\Importable;
+use Maatwebsite\Excel\Concerns\ToCollection;
+use Maatwebsite\Excel\Concerns\WithChunkReading;
+use Maatwebsite\Excel\Concerns\WithHeadingRow;
 use Maatwebsite\Excel\Events\AfterChunk;
-
-
 
 class StockImport implements ToCollection, WithHeadingRow, WithChunkReading
 {
@@ -27,17 +25,20 @@ class StockImport implements ToCollection, WithHeadingRow, WithChunkReading
 
     /** @var string */
     public string $tableName;
+    protected string $runId;
+    protected int $chunkIndex = 0;
 
     /**
      * @param string $tableName
      * @param array $mapping
      * @param int $headingRow
      */
-    public function __construct(string $tableName, array $mapping = [], int $headingRow = 1)
+    public function __construct(string $tableName, array $mapping = [], int $headingRow = 1, ?string $runId = null)
     {
         $this->tableName = $tableName;
         $this->mapping = $mapping;
         $this->headingRow = $headingRow;
+        $this->runId = $runId ?: (string) str()->uuid();
     }
 
     public function headingRow(): int
@@ -47,7 +48,8 @@ class StockImport implements ToCollection, WithHeadingRow, WithChunkReading
 
     public function chunkSize(): int
     {
-        return 1000;
+        $size = (int) config('import_perf.chunk_size', 1000);
+        return $size > 0 ? $size : 1000;
     }
 
     /**
@@ -55,49 +57,82 @@ class StockImport implements ToCollection, WithHeadingRow, WithChunkReading
      */
     public function collection(Collection $rows)
     {
-        // Update progress: count valid rows processed in this chunk (including skipped ones)
-        Cache::increment("import_processed_{$this->tableName}", $rows->count());
+        $chunkStart = microtime(true);
+        $this->chunkIndex++;
+        $rowsCount = $rows->count();
 
+        // Etape 1: mettre a jour la progression avec le volume du chunk lu.
+        Cache::increment("import_processed_{$this->tableName}", $rowsCount);
+
+        // Etape 2: preparer un buffer d'insertion SQL en lot.
+        $mappingStart = microtime(true);
         $insertData = [];
+        $skippedEmptyArticle = 0;
+        $skippedByRules = 0;
 
-        foreach ($rows as $index => $row) {
-            // Ensure array
+        foreach ($rows as $row) {
             $rowArray = $row->toArray();
 
-            // Resolve values
-            $article     = trim((string)$this->resolveValue('article', $rowArray));
-            $designation = trim((string)$this->resolveValue('designation', $rowArray));
+            // Etape 3: resoudre les champs metier via mapping + fallback.
+            $article = trim((string) $this->resolveValue('article', $rowArray));
+            $designation = trim((string) $this->resolveValue('designation', $rowArray));
+            $initial = $this->toDecimal($this->resolveValue('initial', $rowArray));
+            $entree = $this->toDecimal($this->resolveValue('entree', $rowArray));
+            $sortie = $this->toDecimal($this->resolveValue('sortie', $rowArray));
+            $finale = $this->toDecimal($this->resolveValue('finale', $rowArray));
+            $pump = $this->toDecimal($this->resolveValue('pump', $rowArray));
+            $valeur = $this->toDecimal($this->resolveValue('valeur', $rowArray));
 
-            $initial     = $this->toDecimal($this->resolveValue('initial', $rowArray));
-            $entree      = $this->toDecimal($this->resolveValue('entree', $rowArray));
-            $sortie      = $this->toDecimal($this->resolveValue('sortie', $rowArray));
-            $finale      = $this->toDecimal($this->resolveValue('finale', $rowArray));
-            $pump        = $this->toDecimal($this->resolveValue('pump', $rowArray));
-            $valeur      = $this->toDecimal($this->resolveValue('valeur', $rowArray));
-
+            // Etape 4: ignorer les lignes sans article (cle minimale).
             if ($article === '') {
+                $skippedEmptyArticle++;
                 continue;
             }
 
-            // Skip logic
+            // Etape 5: appliquer les regles d'exclusion (groupe/total/lignes quasi vides).
             if ($this->shouldSkip($rowArray)) {
+                $skippedByRules++;
                 continue;
             }
 
+            // Etape 6: accumuler les donnees valides pour insertion grouppee.
             $insertData[] = [
-                'article'      => $article,
-                'designation'  => $designation,
-                'initial'      => $initial,
-                'entree'       => $entree,
-                'sortie'       => $sortie,
-                'finale'       => $finale,
-                'pump'         => $pump,
-                'valeur'       => $valeur,
+                'article' => $article,
+                'designation' => $designation,
+                'initial' => $initial,
+                'entree' => $entree,
+                'sortie' => $sortie,
+                'finale' => $finale,
+                'pump' => $pump,
+                'valeur' => $valeur,
             ];
         }
+        $mappingDurationMs = $this->toMs($mappingStart);
 
+        // Etape 7: inserer le chunk en base seulement s'il contient des lignes valides.
+        $insertStart = microtime(true);
+        $insertedRows = 0;
         if (!empty($insertData)) {
             DB::table($this->tableName)->insert($insertData);
+            $insertedRows = count($insertData);
+        }
+        $insertDurationMs = $this->toMs($insertStart);
+
+        if (config('import_perf.enable_chunk_logs', true)) {
+            Log::channel('import')->info('import.chunk.processed', [
+                'run_id' => $this->runId,
+                'table' => $this->tableName,
+                'chunk_index' => $this->chunkIndex,
+                'chunk_size' => $this->chunkSize(),
+                'rows_read' => $rowsCount,
+                'rows_inserted' => $insertedRows,
+                'rows_skipped_empty_article' => $skippedEmptyArticle,
+                'rows_skipped_rules' => $skippedByRules,
+                'mapping_duration_ms' => $mappingDurationMs,
+                'insert_duration_ms' => $insertDurationMs,
+                'total_chunk_duration_ms' => $this->toMs($chunkStart),
+                'memory_mb' => round(memory_get_usage(true) / 1048576, 2),
+            ]);
         }
     }
 
@@ -107,44 +142,46 @@ class StockImport implements ToCollection, WithHeadingRow, WithChunkReading
      */
     public function shouldSkip(array $row): bool
     {
-        $article = trim((string)$this->resolveValue('article', $row));
-        $designation = trim((string)$this->resolveValue('designation', $row));
+        // Etape 1: extraire les champs utiles a la decision.
+        $article = trim((string) $this->resolveValue('article', $row));
+        $designation = trim((string) $this->resolveValue('designation', $row));
 
-        if ($article === '') return true;
+        // Etape 2: rejeter les lignes sans article.
+        if ($article === '') {
+            return true;
+        }
 
+        // Etape 3: deleguer la logique de filtrage detaillee.
         return $this->skipRow($article, $designation, $row);
     }
 
     /**
-     * Détecte les lignes à ignorer (Groupe, Total, ou <= 2 colonnes remplies).
+     * Detecte les lignes a ignorer (Groupe, Total, ou <= 2 colonnes remplies).
      */
     protected function skipRow(string $article, string $designation, array $row): bool
     {
-
-        // 1) “Groupe: …” en colonne Article
+        // Etape 1: ignorer les lignes de regroupement.
         if ($article !== '' && preg_match('/^\s*g(?:roupe)?\s*:?/iu', $article)) {
             return true;
         }
-        // 2) Lignes Total
+
+        // Etape 2: ignorer les lignes de total.
         if ($designation !== '' && preg_match('/^\s*total\b/iu', $designation)) {
             return true;
         }
 
-        // 3) Lignes avec peu de données (Total groupe, Valeur Total, etc...)
-        // On compte les colonnes non vides
+        // Etape 3: ignorer les lignes trop peu renseignees (souvent des sous-totaux).
         $nonEmpty = 0;
         foreach ($row as $v) {
-            if (trim((string)$v) !== '') {
+            if (trim((string) $v) !== '') {
                 $nonEmpty++;
-                if ($nonEmpty > 2) break;
+                if ($nonEmpty > 2) {
+                    break;
+                }
             }
         }
-        // Si 2 colonnes ou moins sont remplies, on ignore
-        if ($nonEmpty <= 2) {
-            return true;
-        }
 
-        return false;
+        return $nonEmpty <= 2;
     }
 
     /**
@@ -152,22 +189,23 @@ class StockImport implements ToCollection, WithHeadingRow, WithChunkReading
      */
     public function resolveValue(string $field, array $row)
     {
+        // Etape 1: utiliser le mapping manuel/auto s'il est fourni.
         if (!empty($this->mapping[$field])) {
             $key = $this->mapping[$field];
 
-            // 1. Try exact match (if headers are not slugged)
+            // 1) Tentative cle exacte.
             if (isset($row[$key])) {
                 return $row[$key];
             }
 
-            // 2. Try slugged match (standard Laravel Excel behavior)
+            // 2) Tentative cle sluggee avec separateur.
             $slug = Str::slug($key, '_');
             if (isset($row[$slug])) {
                 return $row[$slug];
             }
-            
-            // 3. Try no-separator slug (sometimes just lowercase)
-             $slugNoSep = Str::slug($key, '');
+
+            // 3) Tentative cle sluggee sans separateur.
+            $slugNoSep = Str::slug($key, '');
             if (isset($row[$slugNoSep])) {
                 return $row[$slugNoSep];
             }
@@ -175,6 +213,7 @@ class StockImport implements ToCollection, WithHeadingRow, WithChunkReading
             return null;
         }
 
+        // Etape 2: fallback de compatibilite si aucun mapping n'est present.
         return match ($field) {
             'article' => $row['article'] ?? $row['artcod'] ?? null,
             'designation' => $row['designation'] ?? $row['libelle'] ?? null,
@@ -190,34 +229,37 @@ class StockImport implements ToCollection, WithHeadingRow, WithChunkReading
 
     public function _resolveValue(string $field, array $row)
     {
-        // If we have a mapping for this field, use it.
+        // Version legacy conservee pour retro-compatibilite.
         if (!empty($this->mapping[$field])) {
-            // Maatwebsite Excel slugs the headers in the row keys (separator is usually _)
-            $slug = Str::slug($this->mapping[$field], '_');
-            // return $row[$slug] ?? null;
             return $row[$this->mapping[$field]] ?? null;
         }
 
-        // Fallback for backward compatibility
         switch ($field) {
-            case 'article': return $row['article'] ?? $row['artcod'] ?? null;
-            case 'designation': return $row['désignation']  ?? $row['designation'] ?? $row['libelle'] ?? null;
-            case 'initial': return $row['initial'] ?? $row['init'] ?? null;
-            case 'entree': return $row['entree'] ?? $row['achat'] ?? null;
-            case 'sortie': return $row['sortie'] ?? $row['vente'] ?? null;
-            case 'finale': return $row['finale'] ?? $row['final'] ?? null;
-            case 'pump': return $row['pump'] ?? $row['pmp'] ?? null;
-            case 'valeur': return $row['valeur'] ?? $row['montant'] ?? null;
-            default: return null;
+            case 'article':
+                return $row['article'] ?? $row['artcod'] ?? null;
+            case 'designation':
+                return $row['designation'] ?? $row['libelle'] ?? null;
+            case 'initial':
+                return $row['initial'] ?? $row['init'] ?? null;
+            case 'entree':
+                return $row['entree'] ?? $row['achat'] ?? null;
+            case 'sortie':
+                return $row['sortie'] ?? $row['vente'] ?? null;
+            case 'finale':
+                return $row['finale'] ?? $row['final'] ?? null;
+            case 'pump':
+                return $row['pump'] ?? $row['pmp'] ?? null;
+            case 'valeur':
+                return $row['valeur'] ?? $row['montant'] ?? null;
+            default:
+                return null;
         }
     }
+
     public function registerEvents(): array
     {
         return [
-            AfterChunk::class => function(AfterChunk $event) {
-                // nombre de lignes lues dans ce chunk
-//                $size = count($event->getConcernable()->getRows() ?? []);
-//                Cache::increment("import_processed_{$this->tableName}", $size);
+            AfterChunk::class => function (AfterChunk $event) {
                 static $buffer = 0;
                 $buffer++;
 
@@ -231,13 +273,21 @@ class StockImport implements ToCollection, WithHeadingRow, WithChunkReading
 
     private function toDecimal($v): ?float
     {
-        if ($v === null) return null;
-        // Remplace virgule par point si besoin
-        $s = str_replace([' ', "\u{00A0}"], '', (string)$v); // supprime espaces/nbsp
+        // Etape 1: conserver null tel quel.
+        if ($v === null) {
+            return null;
+        }
+
+        // Etape 2: normaliser espaces + separateur decimal.
+        $s = str_replace([' ', "\u{00A0}"], '', (string) $v);
         $s = str_replace(',', '.', $s);
-        return is_numeric($s) ? (float)$s : null;
+
+        // Etape 3: retourner un float strict ou null si non numerique.
+        return is_numeric($s) ? (float) $s : null;
     }
 
-
+    private function toMs(float $start): int
+    {
+        return (int) round((microtime(true) - $start) * 1000);
+    }
 }
-

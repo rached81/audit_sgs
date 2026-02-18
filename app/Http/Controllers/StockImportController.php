@@ -2,24 +2,16 @@
 
 namespace App\Http\Controllers;
 
-
-
+use App\Jobs\ImportStockJob;
+use App\Services\ColumnMapper;
+use App\Services\FastHeaderDetector;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Artisan;
-use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Storage;
-use Illuminate\Support\Facades\Cache; // Added
-use Maatwebsite\Excel\Facades\Excel;
-use App\Services\HeaderScanner;
 use Maatwebsite\Excel\HeadingRowImport;
-use App\Imports\StockImport;
-use App\Services\ColumnMapper;
-use Maatwebsite\Excel\Concerns\ToArray;
-use Maatwebsite\Excel\Concerns\WithLimit;
-use App\Jobs\ImportStockJob;
-use Maatwebsite\Excel\Imports\HeadingRowFormatter;
-use App\Services\FastHeaderDetector;
 
 class StockImportController extends Controller
 {
@@ -34,10 +26,9 @@ class StockImportController extends Controller
     /**
      * Handle the file upload and initial analysis.
      */
-
-
     public function import(Request $request, ColumnMapper $mapper)
     {
+        // Etape 1: valider les parametres metier et le type du fichier.
         $request->validate([
             'annee' => 'required|numeric|digits:4',
             'programme' => 'required|string|in:EF,GD',
@@ -45,49 +36,45 @@ class StockImportController extends Controller
             'file' => 'required|file|mimes:xlsx,xls,csv',
         ]);
 
+        // Etape 2: construire le nom cible de la table.
         $annee = $request->input('annee');
         $programme = strtoupper($request->input('programme'));
         $reseau = strtoupper($request->input('reseau'));
         $tableName = "RES_{$programme}_{$reseau}_{$annee}";
 
+        // Etape 3: bloquer si la table existe deja avec donnees.
         if (Schema::hasTable($tableName) && DB::table($tableName)->count() > 0) {
             return back()->withErrors([
-                'table_name' => "La table '$tableName' existe déjà et contient des données."
+                'table_name' => "La table '$tableName' existe deja et contient des donnees.",
             ]);
         }
 
+        // Etape 4: stocker le fichier dans un emplacement temporaire.
         $file = $request->file('file');
         $path = $file->store('temp_imports');
         $fullPath = Storage::path($path);
 
         try {
-            $requiredColumns = ['article','designation','initial','entree','sortie','finale','pump','valeur'];
+            // Etape 5: definir les colonnes obligatoires du modele de stock.
+            $requiredColumns = ['article', 'designation', 'initial', 'entree', 'sortie', 'finale', 'pump', 'valeur'];
 
-//            $scanner = new HeaderScanner($mapper, $requiredColumns);
-//            try {
-//                Excel::import($scanner, $fullPath);
-//            } catch (\Exception $e) {}
-            $detector = new \App\Services\FastHeaderDetector($mapper);
+            // Etape 6: detecter automatiquement la ligne d'entetes la plus probable.
+            $detector = new FastHeaderDetector($mapper);
             $result = $detector->detect($fullPath, $requiredColumns, 10);
             $bestRowIndex = $result['bestRow'];
             $bestAnalysis = $result['bestAnalysis'];
-//            $bestRowIndex = $scanner->bestRow ?: 1;
-//            $bestAnalysis = $scanner->bestAnalysis;
 
-            /*  NOUVEAU : lecture réelle des titres */
-            // On laisse le formatter par défaut (slug)
+            // Etape 7: recuperer les en-tetes reelles pour affichage et mapping manuel.
             $headings = (new HeadingRowImport($bestRowIndex))->toArray($fullPath);
             $fileHeaders = $headings[0][0] ?? [];
-
             $fileHeaders = array_values(array_filter(array_map(
-                fn($h) => trim((string)$h),
+                fn($h) => trim((string) $h),
                 $fileHeaders
             )));
 
+            // Etape 8: autoriser l'import auto uniquement si confiance >= 90 pour chaque champ.
             $perfectMatch = true;
             foreach ($requiredColumns as $col) {
-                // On accepte soit Exact (100) soit Synonyme (95) comme "Automatique"
-                // On demande validation si c'est Fuzzy (< 90)
                 if (($bestAnalysis['confidence'][$col] ?? 0) < 90) {
                     $perfectMatch = false;
                     break;
@@ -95,6 +82,7 @@ class StockImportController extends Controller
             }
 
             if ($perfectMatch) {
+                // Etape 9A: lancer directement le pipeline d'import.
                 return $this->doImport(
                     $fullPath,
                     $tableName,
@@ -104,10 +92,10 @@ class StockImportController extends Controller
                 );
             }
 
+            // Etape 9B: afficher l'ecran de validation manuelle du mapping.
             return view('import_mapping', [
                 'analysis' => $bestAnalysis,
-//                'file_headers' => $fileHeaders, // ✅ IMPORTANT
-                'file_headers' => $fileHeaders ?? [],
+                'file_headers' => $fileHeaders,
                 'file_path' => $path,
                 'table_name' => $tableName,
                 'required_columns' => $requiredColumns,
@@ -116,16 +104,16 @@ class StockImportController extends Controller
                 'programme' => $programme,
                 'reseau' => $reseau,
             ]);
-
         } catch (\Exception $e) {
+            // Etape 10: nettoyer le fichier temporaire en cas d'echec d'analyse.
             Storage::delete($path);
             return back()->withErrors(['file' => $e->getMessage()]);
         }
     }
 
-
-    public function     processMappedImport(Request $request)
+    public function processMappedImport(Request $request)
     {
+        // Etape 1: valider les donnees soumises depuis l'ecran de mapping.
         $request->validate([
             'file_path' => 'required|string',
             'table_name' => 'required|string',
@@ -133,73 +121,82 @@ class StockImportController extends Controller
             'heading_row' => 'required|integer',
         ]);
 
+        // Etape 2: reconstruire le contexte d'import.
         $path = $request->input('file_path');
         $tableName = $request->input('table_name');
         $mapping = $request->input('mapping');
-        $headingRow = (int)$request->input('heading_row');
-
+        $headingRow = (int) $request->input('heading_row');
         $fullPath = Storage::path($path);
 
+        // Etape 3: verifier la disponibilite du fichier temporaire.
         if (!file_exists($fullPath)) {
-            return redirect()->route('import.form')->withErrors(['file' => 'Le fichier temporaire a expiré. Veuillez réessayer.']);
+            return redirect()->route('import.form')->withErrors(['file' => 'Le fichier temporaire a expire. Veuillez reessayer.']);
         }
 
+        // Etape 4: deleguer au pipeline commun.
         return $this->doImport($fullPath, $tableName, $mapping, $headingRow, $path);
     }
 
     private function doImport($fullPath, $tableName, $mapping, $headingRow = 1, $relativePath = null)
     {
-        // Ensure table creation logic
+        // Etape 1: creer la table cible si elle n'existe pas.
         if (!Schema::hasTable($tableName)) {
             $exitCode = Artisan::call('stock:create-table', [
-                'table' => $tableName
+                'table' => $tableName,
             ]);
 
             if ($exitCode !== 0) {
-                return redirect()->route('import.form')->withErrors(['table_name' => 'Échec de la création de la table.']);
+                return redirect()->route('import.form')->withErrors(['table_name' => 'Echec de la creation de la table.']);
             }
         }
 
         try {
-            // Dispatch the job to handle import in background
-            ImportStockJob::dispatch($fullPath, $relativePath, $tableName, $mapping, $headingRow);
+            // Etape 2: lancer un job asynchrone pour executer l'import.
+            $runId = (string) str()->uuid();
+            ImportStockJob::dispatch($fullPath, $relativePath, $tableName, $mapping, $headingRow, $runId);
 
+            // Etape 3: retourner la table au front pour le suivi de progression.
             return redirect()->route('import.form')
-                ->with('success', "Importation lancée vers $tableName. Le traitement se fait en arrière-plan. Suivi en cours...")
+                ->with('success', "Importation lancee vers $tableName. Le traitement se fait en arriere-plan. Suivi en cours...")
                 ->with('import_table', $tableName);
-
         } catch (\Exception $e) {
+            // Etape 4: reporter explicitement l'erreur de demarrage.
             return redirect()->route('import.form')->withErrors(['file' => 'Erreur lors du lancement de l\'import : ' . $e->getMessage()]);
         }
     }
 
     public function checkStatus(Request $request)
     {
+        // Etape 1: lire la table suivie depuis la requete de polling.
         $tableName = $request->input('table');
         if (!$tableName) {
             return response()->json(['count' => 0, 'percent' => 0, 'total' => 0]);
         }
 
         if (Schema::hasTable($tableName)) {
-            // Count from Cache is more accurate for progress (includes skipped rows)
+            // Etape 2: prioriser le compteur cache, plus representatif pendant l'import.
             $processed = Cache::get("import_processed_{$tableName}");
 
-            // Fallback to DB count if cache is empty (e.g. page refresh after long time)
+            // Etape 3: fallback DB si le cache n'est plus disponible.
             if ($processed === null) {
                 $processed = DB::table($tableName)->count();
             }
 
+            // Etape 4: calculer le pourcentage a partir du total estime.
             $total = Cache::get("import_total_{$tableName}") ?? 0;
-
             $percent = 0;
+
             if ($total > 0) {
                 $percent = round(($processed / $total) * 100);
-                if ($percent > 100) $percent = 100;
+                if ($percent > 100) {
+                    $percent = 100;
+                }
             }
 
             return response()->json(['count' => $processed, 'percent' => $percent, 'total' => $total]);
         }
 
+        // Etape 5: reponse neutre si table absente.
         return response()->json(['count' => 0, 'percent' => 0, 'total' => 0]);
     }
 }
