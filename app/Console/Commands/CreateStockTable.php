@@ -50,7 +50,8 @@ class CreateStockTable extends Command
 
                 $table->bigIncrements('id');
 
-                $table->unsignedInteger('ARTICLE')->index();
+                // Certains codes article sont alphanumeriques (ex: A1), donc type string.
+                $table->string('ARTICLE', 64)->index();
                 $table->string('DESIGNATION', 255);
                 $table->decimal('INITIAL', 12, 3)->default(0);
                 $table->decimal('ENTREE', 12, 3)->default(0);

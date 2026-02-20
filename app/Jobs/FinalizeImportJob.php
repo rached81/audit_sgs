@@ -33,6 +33,7 @@ class FinalizeImportJob implements ShouldQueue
         $processed = (int) (Cache::get("import_processed_{$this->tableName}") ?? 0);
         $total = (int) (Cache::get("import_total_{$this->tableName}") ?? 0);
         Cache::put("import_done_{$this->tableName}", true, 3600);
+        Cache::put("import_status_{$this->tableName}", 'done', 3600);
 
         Log::channel('import')->info('import.finalize.done', [
             'run_id' => $this->runId,

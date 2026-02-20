@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use PhpOffice\PhpSpreadsheet\IOFactory;
+use PhpOffice\PhpSpreadsheet\Reader\IReadFilter;
 
 class FastHeaderDetector
 {
@@ -16,6 +17,16 @@ class FastHeaderDetector
         // Etape 1: ouvrir le fichier en mode lecture de donnees uniquement.
         $reader = IOFactory::createReaderForFile($fullPath);
         $reader->setReadDataOnly(true);
+        $reader->setReadFilter(new class($maxLines) implements IReadFilter {
+            public function __construct(private int $maxLines)
+            {
+            }
+
+            public function readCell($columnAddress, $row, $worksheetName = ''): bool
+            {
+                return $row >= 1 && $row <= $this->maxLines;
+            }
+        });
 
         $spreadsheet = $reader->load($fullPath);
         $sheet = $spreadsheet->getSheet(0);
@@ -23,11 +34,13 @@ class FastHeaderDetector
         $bestScore = -1;
         $bestRow = 1;
         $bestAnalysis = [];
+        $bestHeaders = [];
+        $highestColumn = $sheet->getHighestDataColumn();
 
         // Etape 2: analyser les premieres lignes et scorer le mapping.
         for ($r = 1; $r <= $maxLines; $r++) {
             $row = $sheet->rangeToArray(
-                "A{$r}:" . $sheet->getHighestColumn() . "{$r}",
+                "A{$r}:{$highestColumn}{$r}",
                 null,
                 true,
                 false
@@ -45,6 +58,7 @@ class FastHeaderDetector
                 $bestScore = $score;
                 $bestRow = $r;
                 $bestAnalysis = $analysis;
+                $bestHeaders = $row;
             }
 
             // Etape 4: arreter tot si score maximal atteint.
@@ -62,6 +76,7 @@ class FastHeaderDetector
             'bestRow' => $bestRow,
             'bestAnalysis' => $bestAnalysis,
             'bestScore' => $bestScore,
+            'bestHeaders' => $bestHeaders,
         ];
     }
 }

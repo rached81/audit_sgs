@@ -2,7 +2,9 @@
 
 namespace App\Imports;
 
+use Illuminate\Bus\Queueable;
 use Illuminate\Support\Collection;
+use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -10,12 +12,14 @@ use Illuminate\Support\Str;
 use Maatwebsite\Excel\Concerns\Importable;
 use Maatwebsite\Excel\Concerns\ToCollection;
 use Maatwebsite\Excel\Concerns\WithChunkReading;
+use Maatwebsite\Excel\Concerns\WithEvents;
 use Maatwebsite\Excel\Concerns\WithHeadingRow;
 use Maatwebsite\Excel\Events\AfterChunk;
+use Maatwebsite\Excel\Events\ImportFailed;
 
-class StockImport implements ToCollection, WithHeadingRow, WithChunkReading
+class StockImport implements ToCollection, WithHeadingRow, WithChunkReading, WithEvents, ShouldQueue
 {
-    use Importable;
+    use Importable, Queueable;
 
     /** @var array */
     protected array $mapping;
@@ -39,6 +43,7 @@ class StockImport implements ToCollection, WithHeadingRow, WithChunkReading
         $this->mapping = $mapping;
         $this->headingRow = $headingRow;
         $this->runId = $runId ?: (string) str()->uuid();
+        $this->queue = config('import_perf.queue_name', 'default');
     }
 
     public function headingRow(): int
@@ -61,10 +66,7 @@ class StockImport implements ToCollection, WithHeadingRow, WithChunkReading
         $this->chunkIndex++;
         $rowsCount = $rows->count();
 
-        // Etape 1: mettre a jour la progression avec le volume du chunk lu.
-        Cache::increment("import_processed_{$this->tableName}", $rowsCount);
-
-        // Etape 2: preparer un buffer d'insertion SQL en lot.
+        // Etape 1: preparer un buffer d'insertion SQL en lot.
         $mappingStart = microtime(true);
         $insertData = [];
         $skippedEmptyArticle = 0;
@@ -73,29 +75,29 @@ class StockImport implements ToCollection, WithHeadingRow, WithChunkReading
         foreach ($rows as $row) {
             $rowArray = $row->toArray();
 
-            // Etape 3: resoudre les champs metier via mapping + fallback.
+            // Etape 2: resoudre les champs metier via mapping + fallback.
             $article = trim((string) $this->resolveValue('article', $rowArray));
             $designation = trim((string) $this->resolveValue('designation', $rowArray));
-            $initial = $this->toDecimal($this->resolveValue('initial', $rowArray));
-            $entree = $this->toDecimal($this->resolveValue('entree', $rowArray));
-            $sortie = $this->toDecimal($this->resolveValue('sortie', $rowArray));
-            $finale = $this->toDecimal($this->resolveValue('finale', $rowArray));
-            $pump = $this->toDecimal($this->resolveValue('pump', $rowArray));
-            $valeur = $this->toDecimal($this->resolveValue('valeur', $rowArray));
+            $initial = $this->toDecimal($this->resolveValue('initial', $rowArray), 0.0);
+            $entree = $this->toDecimal($this->resolveValue('entree', $rowArray), 0.0);
+            $sortie = $this->toDecimal($this->resolveValue('sortie', $rowArray), 0.0);
+            $finale = $this->toDecimal($this->resolveValue('finale', $rowArray), 0.0);
+            $pump = $this->toDecimal($this->resolveValue('pump', $rowArray), 0.0);
+            $valeur = $this->toDecimal($this->resolveValue('valeur', $rowArray), 0.0);
 
-            // Etape 4: ignorer les lignes sans article (cle minimale).
+            // Etape 3: ignorer les lignes sans article (cle minimale).
             if ($article === '') {
                 $skippedEmptyArticle++;
                 continue;
             }
 
-            // Etape 5: appliquer les regles d'exclusion (groupe/total/lignes quasi vides).
+            // Etape 4: appliquer les regles d'exclusion (groupe/total/lignes quasi vides).
             if ($this->shouldSkip($rowArray)) {
                 $skippedByRules++;
                 continue;
             }
 
-            // Etape 6: accumuler les donnees valides pour insertion grouppee.
+            // Etape 5: accumuler les donnees valides pour insertion grouppee.
             $insertData[] = [
                 'article' => $article,
                 'designation' => $designation,
@@ -109,12 +111,13 @@ class StockImport implements ToCollection, WithHeadingRow, WithChunkReading
         }
         $mappingDurationMs = $this->toMs($mappingStart);
 
-        // Etape 7: inserer le chunk en base seulement s'il contient des lignes valides.
+        // Etape 6: inserer le chunk en base seulement s'il contient des lignes valides.
         $insertStart = microtime(true);
         $insertedRows = 0;
         if (!empty($insertData)) {
             DB::table($this->tableName)->insert($insertData);
             $insertedRows = count($insertData);
+            Cache::increment("import_processed_{$this->tableName}", $insertedRows);
         }
         $insertDurationMs = $this->toMs($insertStart);
 
@@ -260,30 +263,36 @@ class StockImport implements ToCollection, WithHeadingRow, WithChunkReading
     {
         return [
             AfterChunk::class => function (AfterChunk $event) {
-                static $buffer = 0;
-                $buffer++;
+                // Hook conserve pour extensions futures.
+            },
+            ImportFailed::class => function (ImportFailed $event) {
+                $message = $event->getException()->getMessage();
+                Cache::put("import_error_{$this->tableName}", $message, 3600);
+                Cache::put("import_status_{$this->tableName}", 'failed', 3600);
+                Cache::put("import_done_{$this->tableName}", false, 3600);
 
-                if ($buffer >= 200) {
-                    Cache::increment("import_processed_{$this->tableName}", $buffer);
-                    $buffer = 0;
-                }
+                Log::channel('import')->error('import.chunk.failed', [
+                    'run_id' => $this->runId,
+                    'table' => $this->tableName,
+                    'message' => $message,
+                ]);
             },
         ];
     }
 
-    private function toDecimal($v): ?float
+    private function toDecimal($v, ?float $default = null): ?float
     {
-        // Etape 1: conserver null tel quel.
+        // Etape 1: valeur par defaut pour les champs numeriques absents.
         if ($v === null) {
-            return null;
+            return $default;
         }
 
         // Etape 2: normaliser espaces + separateur decimal.
         $s = str_replace([' ', "\u{00A0}"], '', (string) $v);
         $s = str_replace(',', '.', $s);
 
-        // Etape 3: retourner un float strict ou null si non numerique.
-        return is_numeric($s) ? (float) $s : null;
+        // Etape 3: retourner un float strict ou la valeur par defaut si non numerique.
+        return is_numeric($s) ? (float) $s : $default;
     }
 
     private function toMs(float $start): int

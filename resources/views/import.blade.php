@@ -174,16 +174,26 @@
                         let pc = data.percent || 0;
                         let count = data.count || 0;
                         let total = data.total || '?';
+                        let status = data.status || 'running';
+                        let error = data.error || null;
 
-                        estimateDiv.innerText = "Lignes importées : " + count + " / " + total;
+                        estimateDiv.innerText = "Lignes importees : " + count + " / " + total;
                         
                         // Update Bar
                         progressBar.style.width = pc + '%';
                         progressText.innerText = pc + '%';
 
-                        if (pc >= 100 || (data.total > 0 && count >= data.total)) {
+                        if (error || status === 'failed') {
                              isFinished = true;
-                             estimateDiv.innerHTML = "<span class='text-green-600 font-bold text-lg'>Importation Terminée avec succès !</span>";
+                             spinner.style.display = 'none';
+                             estimateDiv.innerHTML = "<span class='text-red-600 font-bold'>Import echoue : " + (error ?? "Erreur inconnue") + "</span>";
+                             clearInterval(pollInterval);
+                             return;
+                        }
+
+                        if (status === 'done') {
+                             isFinished = true;
+                             estimateDiv.innerHTML = "<span class='text-green-600 font-bold text-lg'>Importation terminee avec succes !</span>";
                              spinner.style.display = 'none'; // Hide spinner
                              
                              // Add a finish button
@@ -191,7 +201,7 @@
                                  const btn = document.createElement('a');
                                  btn.id = 'finishBtn';
                                  btn.href = "{{ route('consultation.index') }}";
-                                 btn.innerText = "Consulter les données";
+                                 btn.innerText = "Consulter les donnees";
                                  btn.className = "mt-6 inline-block w-full bg-green-600 hover:bg-green-700 text-white font-bold py-3 px-4 rounded shadow transition-colors";
                                  document.querySelector('#loadingOverlay > div').appendChild(btn);
                              }

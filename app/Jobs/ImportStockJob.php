@@ -10,8 +10,6 @@ use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Facades\Storage;
-use Maatwebsite\Excel\Facades\Excel;
 use PhpOffice\PhpSpreadsheet\IOFactory;
 
 class ImportStockJob implements ShouldQueue
@@ -69,43 +67,44 @@ class ImportStockJob implements ShouldQueue
             Cache::put("import_total_{$this->tableName}", $dataRows, 3600);
             Cache::forget("import_processed_{$this->tableName}");
             Cache::forget("import_error_{$this->tableName}");
+            Cache::forget("import_done_{$this->tableName}");
+            Cache::put("import_status_{$this->tableName}", 'running', 3600);
             Log::channel('import')->info('import.job.step.cache_init.done', [
                 'run_id' => $this->runId,
                 'table' => $this->tableName,
                 'duration_ms' => $this->toMs($stepStart),
             ]);
 
-            // Etape 3: executer l'import reel via la classe metier StockImport.
+            // Etape 3: planifier un vrai import parallele par chunks via la queue.
             $stepStart = microtime(true);
-            Excel::import(
-                new StockImport($this->tableName, $this->mapping, $this->headingRow, $this->runId),
-                $this->fullPath
-            );
-            Log::channel('import')->info('import.job.step.excel_import.done', [
+            $import = new StockImport($this->tableName, $this->mapping, $this->headingRow, $this->runId);
+            $queueName = config('import_perf.queue_name', 'imports');
+
+            $pending = $import->queue($this->fullPath);
+            $pending->onQueue($queueName);
+            $pending->allOnQueue($queueName);
+            $pending->chain([
+                (new FinalizeImportJob($this->relativePath, $this->tableName, $this->runId))->onQueue($queueName),
+            ]);
+
+            Log::channel('import')->info('import.job.step.parallel_chunks_dispatched.done', [
                 'run_id' => $this->runId,
                 'table' => $this->tableName,
                 'duration_ms' => $this->toMs($stepStart),
             ]);
 
-            // Etape 4: supprimer le fichier temporaire une fois le traitement termine.
-            $stepStart = microtime(true);
-            if ($this->relativePath) {
-                Storage::delete($this->relativePath);
-            }
-            Log::channel('import')->info('import.job.step.cleanup.done', [
-                'run_id' => $this->runId,
-                'table' => $this->tableName,
-                'duration_ms' => $this->toMs($stepStart),
-            ]);
-
+            // Etape 4: fin de l'orchestration (les chunks continuent en arriere-plan).
             Log::channel('import')->info('import.job.finished', [
                 'run_id' => $this->runId,
                 'table' => $this->tableName,
                 'duration_ms' => $this->toMs($jobStart),
+                'note' => 'chunk jobs dispatched; finalization will run after all chunks',
             ]);
         } catch (\Exception $e) {
             // Etape 5: conserver l'erreur pour inspection cote UI/logs puis rethrow.
             Cache::put("import_error_{$this->tableName}", $e->getMessage(), 3600);
+            Cache::put("import_status_{$this->tableName}", 'failed', 3600);
+            Cache::put("import_done_{$this->tableName}", false, 3600);
             Log::channel('import')->error('import.job.failed', [
                 'run_id' => $this->runId,
                 'table' => $this->tableName,

@@ -11,7 +11,6 @@ use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Storage;
-use Maatwebsite\Excel\HeadingRowImport;
 
 class StockImportController extends Controller
 {
@@ -64,9 +63,8 @@ class StockImportController extends Controller
             $bestRowIndex = $result['bestRow'];
             $bestAnalysis = $result['bestAnalysis'];
 
-            // Etape 7: recuperer les en-tetes reelles pour affichage et mapping manuel.
-            $headings = (new HeadingRowImport($bestRowIndex))->toArray($fullPath);
-            $fileHeaders = $headings[0][0] ?? [];
+            // Etape 7: reutiliser les en-tetes deja lus pendant la detection.
+            $fileHeaders = $result['bestHeaders'] ?? [];
             $fileHeaders = array_values(array_filter(array_map(
                 fn($h) => trim((string) $h),
                 $fileHeaders
@@ -149,11 +147,23 @@ class StockImportController extends Controller
                 return redirect()->route('import.form')->withErrors(['table_name' => 'Echec de la creation de la table.']);
             }
         }
+        try {
+            $articleType = strtolower((string) Schema::getColumnType($tableName, 'ARTICLE'));
+            $numericTypes = ['integer', 'int', 'bigint', 'mediumint', 'smallint', 'tinyint'];
+            if (in_array($articleType, $numericTypes, true)) {
+                return redirect()->route('import.form')->withErrors([
+                    'table_name' => "Schema incompatible sur $tableName: colonne ARTICLE numerique. Recréez la table pour accepter les codes alphanumeriques.",
+                ]);
+            }
+        } catch (\Throwable $e) {
+            // Ignorer silencieusement si introspection non supportee par le driver.
+        }
 
         try {
             // Etape 2: lancer un job asynchrone pour executer l'import.
             $runId = (string) str()->uuid();
-            ImportStockJob::dispatch($fullPath, $relativePath, $tableName, $mapping, $headingRow, $runId);
+            ImportStockJob::dispatch($fullPath, $relativePath, $tableName, $mapping, $headingRow, $runId)
+                ->onQueue(config('import_perf.queue_name', 'imports'));
 
             // Etape 3: retourner la table au front pour le suivi de progression.
             return redirect()->route('import.form')
@@ -170,7 +180,7 @@ class StockImportController extends Controller
         // Etape 1: lire la table suivie depuis la requete de polling.
         $tableName = $request->input('table');
         if (!$tableName) {
-            return response()->json(['count' => 0, 'percent' => 0, 'total' => 0]);
+            return response()->json(['count' => 0, 'percent' => 0, 'total' => 0, 'status' => 'idle', 'error' => null]);
         }
 
         if (Schema::hasTable($tableName)) {
@@ -193,10 +203,28 @@ class StockImportController extends Controller
                 }
             }
 
-            return response()->json(['count' => $processed, 'percent' => $percent, 'total' => $total]);
+            $error = Cache::get("import_error_{$tableName}");
+            $status = Cache::get("import_status_{$tableName}") ?? 'running';
+
+            if ($error) {
+                $status = 'failed';
+            }
+
+            if (Cache::get("import_done_{$tableName}") === true && !$error) {
+                $percent = 100;
+                $status = 'done';
+            }
+
+            return response()->json([
+                'count' => $processed,
+                'percent' => $percent,
+                'total' => $total,
+                'status' => $status,
+                'error' => $error,
+            ]);
         }
 
         // Etape 5: reponse neutre si table absente.
-        return response()->json(['count' => 0, 'percent' => 0, 'total' => 0]);
+        return response()->json(['count' => 0, 'percent' => 0, 'total' => 0, 'status' => 'idle', 'error' => null]);
     }
 }
