@@ -39,7 +39,7 @@ class StockImportController extends Controller
         $annee = $request->input('annee');
         $programme = strtoupper($request->input('programme'));
         $reseau = strtoupper($request->input('reseau'));
-        $tableName = "RES_{$programme}_{$reseau}_{$annee}";
+        $tableName = strtolower("RES_{$programme}_{$reseau}_{$annee}");
 
         // Etape 3: bloquer si la table existe deja avec donnees.
         if (Schema::hasTable($tableName) && DB::table($tableName)->count() > 0) {
