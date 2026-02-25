@@ -228,21 +228,32 @@ return [
         ],
     ],
 */
-  'environments' => [
-    'production' => [
-        'imports-heavy' => [
-            'connection' => 'redis',
-            'queue' => ['imports-heavy'], // ta queue principale
-            'balance' => 'auto',          // ajuste les workers selon charge
-            'minProcesses' => 2,          // min workers actifs
-            'maxProcesses' => 8,          // max workers actifs
-            'memory' => 512,              // limite RAM par worker (MB)
-            'timeout' => 300,             // temps max d'un job (s)
-            'tries' => 3,                 // retries si erreur
-            'maxJobs' => 100,             // redémarrage après 100 jobs pour éviter memory leak
+
+    'environments' => [
+        'production' => [
+            'imports-supervisor' => [
+                'connection' => 'redis',
+                'queue' => ['imports'],
+                'balance' => 'auto',
+                'autoScalingStrategy' => 'time',
+                'minProcesses' => 1,
+                'maxProcesses' => 4,
+                'tries' => 1,
+                'timeout' => 3600,
+                'nice' => 0,
+            ],
+
+            'default-supervisor' => [
+                'connection' => 'redis',
+                'queue' => ['default'],
+                'balance' => 'auto',
+                'minProcesses' => 1,
+                'maxProcesses' => 2,
+                'tries' => 1,
+                'timeout' => 120,
+            ],
         ],
     ],
-],
 
 
     /*
