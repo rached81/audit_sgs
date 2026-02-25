@@ -31,8 +31,8 @@ class StockAuditController extends Controller
         $reseau = strtoupper($request->input('reseau'));
         $type = $request->input('type', 'valeur');
 
-        $efTable = "RES_EF_{$reseau}_{$annee}";
-        $gdTable = "RES_GD_{$reseau}_{$annee}";
+        $efTable = strtolower("RES_EF_{$reseau}_{$annee}");
+        $gdTable = strtolower("RES_GD_{$reseau}_{$annee}");
 
         if (!Schema::hasTable($efTable)) {
             return back()->withErrors(['tables' => "La table EF '$efTable' est introuvable."]);
@@ -135,8 +135,8 @@ class StockAuditController extends Controller
         $reseau = strtoupper($request->input('reseau'));
         $type = $request->input('type', 'valeur');
 
-        $efTable = "RES_EF_{$reseau}_{$annee}";
-        $gdTable = "RES_GD_{$reseau}_{$annee}";
+        $efTable = strtolower("RES_EF_{$reseau}_{$annee}");
+        $gdTable = strtolower("RES_GD_{$reseau}_{$annee}");
 
         if (!Schema::hasTable($efTable) || !Schema::hasTable($gdTable)) {
              return back()->withErrors(['tables' => "Tables introuvables pour l'export."]);
