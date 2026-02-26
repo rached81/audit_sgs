@@ -18,13 +18,9 @@ class HorizonServiceProvider extends HorizonApplicationServiceProvider
         // Horizon::routeSmsNotificationsTo('15556667777');
         // Horizon::routeMailNotificationsTo('example@example.com');
         // Horizon::routeSlackNotificationsTo('slack-webhook-url', '#channel');
-Horizon::auth(function ($request) {
-    return in_array($request->ip(), [
-        '127.0.0.1',
-        '::1',
- '10.0.80.1', 
-    ]);
-});
+        Horizon::auth(function ($request) {
+            return     in_array(request()->ip(), ['10.0.80.1', '127.0.0.1']);
+        });
 
 
     }
