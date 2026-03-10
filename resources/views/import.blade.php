@@ -2,7 +2,7 @@
 
 @section('content')
     <!-- Loading Overlay -->
-    <div id="loadingOverlay" class="fixed inset-0 bg-gray-900 bg-opacity-50 z-50 flex items-center justify-center hidden">
+    <div id="loadingOverlay" class="fixed inset-0 bg-opacity-50 z-50 flex items-center justify-center hidden">
         <div class="bg-white p-8 rounded-lg shadow-xl text-center max-w-md mx-4 w-full">
             <div id="loadingSpinner" class="loader ease-linear rounded-full border-8 border-t-8 border-gray-200 h-16 w-16 mx-auto mb-4 border-indigo-600"></div>
             <h2 class="text-xl font-bold text-gray-800 mb-2">Import en cours...</h2>
