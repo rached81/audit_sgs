@@ -168,9 +168,18 @@
             let pollInterval = setInterval(function() {
                 if (isFinished) return;
 
-                axios.get(statusUrl)
+                fetch(statusUrl)
                     .then(response => {
-                        let data = response.data;
+                        if (response.status === 401) {
+                            window.location.href = '/login';
+                            return;
+                        }
+                        if (!response.ok) {
+                            throw new Error('Network response was not ok');
+                        }
+                        return response.json();
+                    })
+                    .then(data => {
                         let pc = data.percent || 0;
                         let count = data.count || 0;
                         let total = data.total || '?';
