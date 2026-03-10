@@ -2,7 +2,7 @@
 
 @section('content')
     <!-- Loading Overlay -->
-    <div id="loadingOverlay" class="fixed inset-0 bg-gray-900 bg-opacity-50 z-50 flex items-center justify-center hidden">
+    <div id="loadingOverlay" class="fixed inset-0  bg-opacity-20 z-50 flex items-center justify-center hidden">
         <div class="bg-white p-8 rounded-lg shadow-xl text-center max-w-md mx-4 w-full">
             <div id="loadingSpinner" class="loader ease-linear rounded-full border-8 border-t-8 border-gray-200 h-16 w-16 mx-auto mb-4 border-indigo-600"></div>
             <h2 class="text-xl font-bold text-gray-800 mb-2">Import en cours...</h2>
@@ -112,8 +112,9 @@
 
                 <div class="mb-6">
                     <label for="file" class="block text-gray-700 font-bold mb-2">Fichier Excel</label>
+                    <p class="text-xs text-gray-500 mb-2">Taille maximale: 1 GB</p>
                     <div class="relative border-2 border-dashed border-gray-300 rounded-lg p-6 hover:bg-gray-50 transition-colors text-center cursor-pointer" onclick="document.getElementById('file').click()">
-                        <input type="file" name="file" id="file" class="hidden" accept=".xlsx,.xls,.cvs" onchange="handleFileSelect(this)">
+                        <input type="file" name="file" id="file" class="hidden" accept=".xlsx,.xls,.csv" onchange="handleFileSelect(this)">
                         <svg class="mx-auto h-12 w-12 text-gray-400" stroke="currentColor" fill="none" viewBox="0 0 48 48" aria-hidden="true">
                             <path d="M28 8H12a4 4 0 00-4 4v20m32-12v8m0 0v8a4 4 0 01-4 4H12a4 4 0 01-4-4v-4m32-4l-3.172-3.172a4 4 0 00-5.656 0L28 28M8 32l9.172-9.172a4 4 0 015.656 0L28 28m0 0l4 4m4-24h8m-4-4v8m-12 4h.02" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
                         </svg>

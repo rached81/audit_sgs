@@ -32,7 +32,7 @@ class StockImportController extends Controller
             'annee' => 'required|numeric|digits:4',
             'programme' => 'required|string|in:EF,GD',
             'reseau' => 'required|string|in:BUS,FERRE',
-            'file' => 'required|file|mimes:xlsx,xls,csv',
+            'file' => 'required|file|mimes:xlsx,xls,csv|max:1048576', // 1GB in KB
         ]);
 
         // Etape 2: construire le nom cible de la table.
