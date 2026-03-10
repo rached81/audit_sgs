@@ -112,7 +112,6 @@
 
                 <div class="mb-6">
                     <label for="file" class="block text-gray-700 font-bold mb-2">Fichier Excel</label>
-                    <p class="text-xs text-gray-500 mb-2">Taille maximale: 1 GB</p>
                     <div class="relative border-2 border-dashed border-gray-300 rounded-lg p-6 hover:bg-gray-50 transition-colors text-center cursor-pointer" onclick="document.getElementById('file').click()">
                         <input type="file" name="file" id="file" class="hidden" accept=".xlsx,.xls,.csv" onchange="handleFileSelect(this)">
                         <svg class="mx-auto h-12 w-12 text-gray-400" stroke="currentColor" fill="none" viewBox="0 0 48 48" aria-hidden="true">
