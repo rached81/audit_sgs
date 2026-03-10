@@ -6,7 +6,7 @@
         <div class="bg-white p-8 rounded-lg shadow-xl text-center max-w-md mx-4 w-full">
             <div id="loadingSpinner" class="loader ease-linear rounded-full border-8 border-t-8 border-gray-200 h-16 w-16 mx-auto mb-4 border-indigo-600"></div>
             <h2 class="text-xl font-bold text-gray-800 mb-2">Import en cours...</h2>
-            
+
             <!-- Progress Bar -->
             <div class="w-full bg-gray-200 rounded-full h-4 mb-1 relative overflow-hidden">
                 <div id="progressBar" class="bg-indigo-600 h-4 rounded-full transition-all duration-300" style="width: 0%"></div>
@@ -159,18 +159,18 @@
             const progressBar = document.getElementById('progressBar');
             const progressText = document.getElementById('progressText');
             const spinner = document.getElementById('loadingSpinner');
-            
+
             // Re-open overlay if it was closed (page reload)
             overlay.classList.remove('hidden');
-            
+
             let isFinished = false;
 
             let pollInterval = setInterval(function() {
                 if (isFinished) return;
 
-                fetch(statusUrl)
-                    .then(response => response.json())
-                    .then(data => {
+                axios.get(statusUrl)
+                    .then(response => {
+                        let data = response.data;
                         let pc = data.percent || 0;
                         let count = data.count || 0;
                         let total = data.total || '?';
@@ -178,7 +178,7 @@
                         let error = data.error || null;
 
                         estimateDiv.innerText = "Lignes importees : " + count + " / " + total;
-                        
+
                         // Update Bar
                         progressBar.style.width = pc + '%';
                         progressText.innerText = pc + '%';
@@ -195,7 +195,7 @@
                              isFinished = true;
                              estimateDiv.innerHTML = "<span class='text-green-600 font-bold text-lg'>Importation terminee avec succes !</span>";
                              spinner.style.display = 'none'; // Hide spinner
-                             
+
                              // Add a finish button
                              if (!document.getElementById('finishBtn')) {
                                  const btn = document.createElement('a');
@@ -205,11 +205,11 @@
                                  btn.className = "mt-6 inline-block w-full bg-green-600 hover:bg-green-700 text-white font-bold py-3 px-4 rounded shadow transition-colors";
                                  document.querySelector('#loadingOverlay > div').appendChild(btn);
                              }
-                             
+
                              // Remove Close button if exists
                              const closeBtn = document.getElementById('closeOverlayBtn');
                              if(closeBtn) closeBtn.remove();
-                             
+
                              clearInterval(pollInterval);
                         }
                     })
