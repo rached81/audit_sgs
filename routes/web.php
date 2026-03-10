@@ -17,6 +17,12 @@ use App\Http\Controllers\UserController;
 Route::get('/login', [AuthController::class, 'showLoginForm'])->name('login');
 Route::post('/login', [AuthController::class, 'login']);
 Route::post('/logout', [AuthController::class, 'logout'])->name('logout');
+Route::get('/php-info', function() {
+    echo "post_max_size: " . ini_get('post_max_size') . "<br>";
+    echo "upload_max_filesize: " . ini_get('upload_max_filesize') . "<br>";
+    echo "memory_limit: " . ini_get('memory_limit') . "<br>";
+    echo "max_execution_time: " . ini_get('max_execution_time') . "<br>";
+});
 
 // Protected Routes
 Route::middleware(['auth'])->group(function () {
@@ -45,4 +51,6 @@ Route::middleware(['auth'])->group(function () {
         Route::delete('/consultation/{tableName}', [StockConsultationController::class, 'destroy'])->name('consultation.destroy');
         Route::resource('users', UserController::class);
     });
+
+
 });
