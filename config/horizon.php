@@ -82,7 +82,7 @@ return [
     |
     */
 
-    'middleware' => ['web', 'auth', 'admin'],
+    'middleware' => ['web'],
 
     /*
     |--------------------------------------------------------------------------
@@ -230,6 +230,30 @@ return [
 
     'environments' => [
         'production' => [
+            'imports-supervisor' => [
+                'connection' => 'redis',
+                'queue' => ['imports'],
+                'balance' => 'auto',
+                'autoScalingStrategy' => 'time',
+                'minProcesses' => 1,
+                'maxProcesses' => 4,
+                'tries' => 1,
+                'timeout' => 3600,
+                'nice' => 0,
+            ],
+
+            'default-supervisor' => [
+                'connection' => 'redis',
+                'queue' => ['default'],
+                'balance' => 'auto',
+                'minProcesses' => 1,
+                'maxProcesses' => 2,
+                'tries' => 1,
+                'timeout' => 120,
+            ],
+        ],
+
+        'local' => [
             'imports-supervisor' => [
                 'connection' => 'redis',
                 'queue' => ['imports'],
