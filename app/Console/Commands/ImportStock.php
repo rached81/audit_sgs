@@ -2,13 +2,10 @@
 
 namespace App\Console\Commands;
 
-use App\Imports\StockImport;
-use App\Models\DynamicStock;
+use App\Services\StockCsvImporter;
 use Illuminate\Console\Command;
-use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\DB;
-//use Maatwebsite\Excel\Excel;
-use Maatwebsite\Excel\Facades\Excel;
+use Illuminate\Support\Facades\Schema;
 
 class ImportStock extends Command
 {
@@ -22,6 +19,7 @@ class ImportStock extends Command
     {
         $file  = $this->argument('file');
         $table = strtoupper($this->argument('table'));
+        $fullPath = is_file($file) ? $file : storage_path('app/' . $file);
 
         if (!Schema::hasTable($table)) {
             $this->error("Table '$table' does not exist. Please run 'php artisan stock:create-table $table' first.");
@@ -32,9 +30,24 @@ class ImportStock extends Command
             DB::table($table)->truncate();
         }
 
-//        Excel::import(new StockImport($table), $file);
-        Excel::import(new StockImport($table), is_file($file) ? $file : storage_path('app/'.$file));
-        $this->info("Import OK vers $table");
+        $mapping = [
+            'article' => 'ARTICLE',
+            'designation' => 'DESIGNATION',
+            'initial' => 'INITIAL',
+            'entree' => 'ENTREE',
+            'sortie' => 'SORTIE',
+            'finale' => 'FINALE',
+            'pump' => 'PUMP',
+            'valeur' => 'VALEUR',
+        ];
+
+        $importer = app(StockCsvImporter::class);
+        $normalized = $importer->normalizeToCsv($fullPath, $mapping, 1, null);
+        $rows = $importer->importNormalizedCsv($normalized['csv_path'], $table);
+
+        \Illuminate\Support\Facades\Storage::delete($normalized['relative_csv_path']);
+
+        $this->info("Import OK vers $table ({$rows} lignes)");
         return 0;
     }
     /**

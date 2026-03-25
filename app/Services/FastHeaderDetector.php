@@ -14,9 +14,19 @@ class FastHeaderDetector
 
     public function detect(string $fullPath, array $requiredColumns, int $maxLines = 10): array
     {
-        // Etape 1: ouvrir le fichier en mode lecture de donnees uniquement.
         $reader = IOFactory::createReaderForFile($fullPath);
         $reader->setReadDataOnly(true);
+        if (method_exists($reader, 'setReadEmptyCells')) {
+            $reader->setReadEmptyCells(false);
+        }
+        if (method_exists($reader, 'setContiguous')) {
+            $reader->setContiguous(true);
+        }
+        $worksheetInfo = $reader->listWorksheetInfo($fullPath);
+        $firstSheetName = $worksheetInfo[0]['worksheetName'] ?? null;
+        if ($firstSheetName && method_exists($reader, 'setLoadSheetsOnly')) {
+            $reader->setLoadSheetsOnly([$firstSheetName]);
+        }
         $reader->setReadFilter(new class($maxLines) implements IReadFilter {
             public function __construct(private int $maxLines)
             {
@@ -37,7 +47,6 @@ class FastHeaderDetector
         $bestHeaders = [];
         $highestColumn = $sheet->getHighestDataColumn();
 
-        // Etape 2: analyser les premieres lignes et scorer le mapping.
         for ($r = 1; $r <= $maxLines; $r++) {
             $row = $sheet->rangeToArray(
                 "A{$r}:{$highestColumn}{$r}",
@@ -53,7 +62,6 @@ class FastHeaderDetector
             $analysis = $this->mapper->mapHeaders($row, $requiredColumns);
             $score = array_sum($analysis['confidence']);
 
-            // Etape 3: conserver la meilleure ligne detectee.
             if ($score > $bestScore) {
                 $bestScore = $score;
                 $bestRow = $r;
@@ -61,14 +69,12 @@ class FastHeaderDetector
                 $bestHeaders = $row;
             }
 
-            // Etape 4: arreter tot si score maximal atteint.
             $maxPossible = count($requiredColumns) * 100;
             if ($score >= $maxPossible) {
                 break;
             }
         }
 
-        // Etape 5: liberer la memoire PhpSpreadsheet.
         $spreadsheet->disconnectWorksheets();
         unset($spreadsheet);
 

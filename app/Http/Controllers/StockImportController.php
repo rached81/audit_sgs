@@ -9,25 +9,30 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Response;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Storage;
+use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class StockImportController extends Controller
 {
-    /**
-     * Display the import form.
-     */
     public function showForm()
     {
         return view('import');
     }
 
-    /**
-     * Handle the file upload and initial analysis.
-     */
     public function import(Request $request, ColumnMapper $mapper)
     {
-        // Etape 1: valider les parametres metier et le type du fichier.
+        Log::channel('import')->info('import.controller.request.received', [
+            'programme' => $request->input('programme'),
+            'reseau' => $request->input('reseau'),
+            'annee' => $request->input('annee'),
+            'original_name' => $request->file('file')?->getClientOriginalName(),
+            'mime' => $request->file('file')?->getClientMimeType(),
+            'size_bytes' => $request->file('file')?->getSize(),
+        ]);
+
         $request->validate([
             'annee' => 'required|numeric|digits:4',
             'programme' => 'required|string|in:EF,GD',
@@ -35,42 +40,53 @@ class StockImportController extends Controller
             'file' => 'required|file|mimes:xlsx,xls,csv',
         ]);
 
-        // Etape 2: construire le nom cible de la table.
         $annee = $request->input('annee');
         $programme = strtoupper($request->input('programme'));
         $reseau = strtoupper($request->input('reseau'));
         $tableName = strtolower("RES_{$programme}_{$reseau}_{$annee}");
 
-        // Etape 3: bloquer si la table existe deja avec donnees.
         if (Schema::hasTable($tableName) && DB::table($tableName)->count() > 0) {
+            Log::channel('import')->warning('import.controller.table.already_filled', [
+                'table' => $tableName,
+            ]);
+
             return back()->withErrors([
                 'table_name' => "La table '$tableName' existe deja et contient des donnees.",
             ]);
         }
 
-        // Etape 4: stocker le fichier dans un emplacement temporaire.
         $file = $request->file('file');
         $path = $file->store('temp_imports');
         $fullPath = Storage::path($path);
 
+        Log::channel('import')->info('import.controller.file.stored', [
+            'table' => $tableName,
+            'relative_path' => $path,
+            'full_path' => $fullPath,
+        ]);
+
         try {
-            // Etape 5: definir les colonnes obligatoires du modele de stock.
             $requiredColumns = ['article', 'designation', 'initial', 'entree', 'sortie', 'finale', 'pump', 'valeur'];
 
-            // Etape 6: detecter automatiquement la ligne d'entetes la plus probable.
             $detector = new FastHeaderDetector($mapper);
             $result = $detector->detect($fullPath, $requiredColumns, 10);
             $bestRowIndex = $result['bestRow'];
             $bestAnalysis = $result['bestAnalysis'];
 
-            // Etape 7: reutiliser les en-tetes deja lus pendant la detection.
+            Log::channel('import')->info('import.controller.header.detected', [
+                'table' => $tableName,
+                'best_row' => $bestRowIndex,
+                'best_score' => $result['bestScore'] ?? null,
+                'mapping' => $bestAnalysis['mapping'] ?? [],
+                'confidence' => $bestAnalysis['confidence'] ?? [],
+            ]);
+
             $fileHeaders = $result['bestHeaders'] ?? [];
             $fileHeaders = array_values(array_filter(array_map(
                 fn($h) => trim((string) $h),
                 $fileHeaders
             )));
 
-            // Etape 8: autoriser l'import auto uniquement si confiance >= 90 pour chaque champ.
             $perfectMatch = true;
             foreach ($requiredColumns as $col) {
                 if (($bestAnalysis['confidence'][$col] ?? 0) < 90) {
@@ -80,7 +96,12 @@ class StockImportController extends Controller
             }
 
             if ($perfectMatch) {
-                // Etape 9A: lancer directement le pipeline d'import.
+                Log::channel('import')->info('import.controller.mapping.auto_confirmed', [
+                    'table' => $tableName,
+                    'heading_row' => $bestRowIndex,
+                    'mapping' => $bestAnalysis['mapping'],
+                ]);
+
                 return $this->doImport(
                     $fullPath,
                     $tableName,
@@ -90,7 +111,14 @@ class StockImportController extends Controller
                 );
             }
 
-            // Etape 9B: afficher l'ecran de validation manuelle du mapping.
+            Log::channel('import')->info('import.controller.mapping.manual_required', [
+                'table' => $tableName,
+                'heading_row' => $bestRowIndex,
+                'mapping' => $bestAnalysis['mapping'] ?? [],
+                'confidence' => $bestAnalysis['confidence'] ?? [],
+                'headers' => $fileHeaders,
+            ]);
+
             return view('import_mapping', [
                 'analysis' => $bestAnalysis,
                 'file_headers' => $fileHeaders,
@@ -103,15 +131,21 @@ class StockImportController extends Controller
                 'reseau' => $reseau,
             ]);
         } catch (\Exception $e) {
-            // Etape 10: nettoyer le fichier temporaire en cas d'echec d'analyse.
             Storage::delete($path);
+
+            Log::channel('import')->error('import.controller.analysis.failed', [
+                'table' => $tableName,
+                'relative_path' => $path,
+                'message' => $e->getMessage(),
+                'exception' => get_class($e),
+            ]);
+
             return back()->withErrors(['file' => $e->getMessage()]);
         }
     }
 
     public function processMappedImport(Request $request)
     {
-        // Etape 1: valider les donnees soumises depuis l'ecran de mapping.
         $request->validate([
             'file_path' => 'required|string',
             'table_name' => 'required|string',
@@ -119,80 +153,221 @@ class StockImportController extends Controller
             'heading_row' => 'required|integer',
         ]);
 
-        // Etape 2: reconstruire le contexte d'import.
         $path = $request->input('file_path');
         $tableName = $request->input('table_name');
         $mapping = $request->input('mapping');
         $headingRow = (int) $request->input('heading_row');
         $fullPath = Storage::path($path);
 
-        // Etape 3: verifier la disponibilite du fichier temporaire.
+        Log::channel('import')->info('import.controller.mapping.confirmed', [
+            'table' => $tableName,
+            'heading_row' => $headingRow,
+            'mapping' => $mapping,
+            'relative_path' => $path,
+            'full_path' => $fullPath,
+        ]);
+
         if (!file_exists($fullPath)) {
-            return redirect()->route('import.form')->withErrors(['file' => 'Le fichier temporaire a expire. Veuillez reessayer.']);
+            Log::channel('import')->warning('import.controller.temp_file.missing', [
+                'table' => $tableName,
+                'relative_path' => $path,
+                'full_path' => $fullPath,
+            ]);
+
+            return redirect()->route('import.form')
+                ->withErrors(['file' => 'Le fichier temporaire a expire. Veuillez reessayer.']);
         }
 
-        // Etape 4: deleguer au pipeline commun.
         return $this->doImport($fullPath, $tableName, $mapping, $headingRow, $path);
     }
 
     private function doImport($fullPath, $tableName, $mapping, $headingRow = 1, $relativePath = null)
     {
-        // Etape 1: creer la table cible si elle n'existe pas.
+        @set_time_limit(0);
+
+        Log::channel('import')->info('import.controller.pipeline.start', [
+            'table' => $tableName,
+            'heading_row' => $headingRow,
+            'relative_path' => $relativePath,
+            'full_path' => $fullPath,
+            'mapping' => $mapping,
+            'queue_connection' => config('queue.default'),
+        ]);
+
         if (!Schema::hasTable($tableName)) {
             $exitCode = Artisan::call('stock:create-table', [
                 'table' => $tableName,
             ]);
 
+            Log::channel('import')->info('import.controller.table.create_attempted', [
+                'table' => $tableName,
+                'exit_code' => $exitCode,
+                'artisan_output' => trim(Artisan::output()),
+            ]);
+
             if ($exitCode !== 0) {
+                Log::channel('import')->error('import.controller.table.create_failed', [
+                    'table' => $tableName,
+                    'artisan_output' => trim(Artisan::output()),
+                ]);
+
                 return redirect()->route('import.form')->withErrors(['table_name' => 'Echec de la creation de la table.']);
             }
         }
+
         try {
             $articleType = strtolower((string) Schema::getColumnType($tableName, 'ARTICLE'));
             $numericTypes = ['integer', 'int', 'bigint', 'mediumint', 'smallint', 'tinyint'];
+
+            Log::channel('import')->info('import.controller.table.schema_checked', [
+                'table' => $tableName,
+                'article_type' => $articleType,
+            ]);
+
             if (in_array($articleType, $numericTypes, true)) {
-                return redirect()->route('import.form')->withErrors([
-                    'table_name' => "Schema incompatible sur $tableName: colonne ARTICLE numerique. Recréez la table pour accepter les codes alphanumeriques.",
+                $existingRows = DB::table($tableName)->count();
+
+                Log::channel('import')->warning('import.controller.table.schema_incompatible', [
+                    'table' => $tableName,
+                    'article_type' => $articleType,
+                    'existing_rows' => $existingRows,
                 ]);
+
+                if ($existingRows > 0) {
+                    return redirect()->route('import.form')->withErrors([
+                        'table_name' => "Schema incompatible sur $tableName: colonne ARTICLE numerique et table non vide. Videz ou recreez la table avant import.",
+                    ]);
+                }
+
+                $recreateExitCode = Artisan::call('stock:create-table', [
+                    'table' => $tableName,
+                    '--force' => true,
+                ]);
+
+                Log::channel('import')->info('import.controller.table.recreated_for_schema_fix', [
+                    'table' => $tableName,
+                    'exit_code' => $recreateExitCode,
+                    'artisan_output' => trim(Artisan::output()),
+                ]);
+
+                if ($recreateExitCode !== 0) {
+                    return redirect()->route('import.form')->withErrors([
+                        'table_name' => "Impossible de recreer automatiquement la table $tableName avec le bon schema.",
+                    ]);
+                }
             }
         } catch (\Throwable $e) {
-            // Ignorer silencieusement si introspection non supportee par le driver.
+            Log::channel('import')->warning('import.controller.table.schema_check_skipped', [
+                'table' => $tableName,
+                'message' => $e->getMessage(),
+                'exception' => get_class($e),
+            ]);
         }
 
         try {
-            // Etape 2: lancer un job asynchrone pour executer l'import.
             $runId = (string) str()->uuid();
-            ImportStockJob::dispatch($fullPath, $relativePath, $tableName, $mapping, $headingRow, $runId)
-                ->onQueue(config('import_perf.queue_name', 'imports'));
 
-            // Etape 3: retourner la table au front pour le suivi de progression.
+            Log::channel('import')->info('import.controller.job.dispatched', [
+                'run_id' => $runId,
+                'table' => $tableName,
+                'queue_connection' => config('queue.default'),
+            ]);
+
+            ImportStockJob::dispatch($fullPath, $relativePath, $tableName, $mapping, $headingRow, $runId);
+
             return redirect()->route('import.form')
-                ->with('success', "Importation lancee vers $tableName. Le traitement se fait en arriere-plan. Suivi en cours...")
-                ->with('import_table', $tableName);
+                ->with('import_table', $tableName) // backward compatibility for old polling
+                ->with('import_run_id', $runId);
         } catch (\Exception $e) {
-            // Etape 4: reporter explicitement l'erreur de demarrage.
-            return redirect()->route('import.form')->withErrors(['file' => 'Erreur lors du lancement de l\'import : ' . $e->getMessage()]);
+            Log::channel('import')->error('import.controller.pipeline.failed', [
+                'table' => $tableName,
+                'message' => $e->getMessage(),
+                'exception' => get_class($e),
+            ]);
+
+            return redirect()->route('import.form')->withErrors(['file' => 'Erreur lors de l\'import : ' . $e->getMessage()]);
         }
+    }
+
+    public function events(Request $request): StreamedResponse
+    {
+        $runId = (string) $request->query('runId', '');
+        if ($runId === '') {
+            abort(400, 'Missing runId');
+        }
+
+        $key = "import_run_{$runId}";
+
+        return Response::stream(function () use ($key) {
+            @set_time_limit(0);
+
+            $lastJson = null;
+            $start = time();
+
+            while (true) {
+                $state = Cache::get($key);
+                if (!is_array($state)) {
+                    $state = [
+                        'status' => 'running',
+                        'stage' => 'starting',
+                        'overall_percent' => 0,
+                        'stage_percent' => 0,
+                        'processed' => 0,
+                        'total' => 0,
+                        'eta_seconds' => null,
+                        'updated_at' => time(),
+                    ];
+                }
+
+                $json = json_encode($state, JSON_UNESCAPED_SLASHES);
+                if ($json !== $lastJson) {
+                    echo "event: progress\n";
+                    echo "data: {$json}\n\n";
+                    $lastJson = $json;
+                } else {
+                    // keep-alive to avoid proxies closing the connection
+                    echo ": ping\n\n";
+                }
+
+                if (function_exists('ob_flush')) {
+                    @ob_flush();
+                }
+                @flush();
+
+                $status = (string) ($state['status'] ?? 'running');
+                if (in_array($status, ['done', 'failed'], true)) {
+                    break;
+                }
+
+                // safety: stop after 2 hours
+                if ((time() - $start) > 7200) {
+                    break;
+                }
+
+                usleep(750000); // ~0.75s
+            }
+        }, 200, [
+            'Content-Type' => 'text/event-stream',
+            'Cache-Control' => 'no-cache, no-store, must-revalidate',
+            'Connection' => 'keep-alive',
+            'X-Accel-Buffering' => 'no',
+        ]);
     }
 
     public function checkStatus(Request $request)
     {
-        // Etape 1: lire la table suivie depuis la requete de polling.
         $tableName = $request->input('table');
         if (!$tableName) {
             return response()->json(['count' => 0, 'percent' => 0, 'total' => 0, 'status' => 'idle', 'error' => null]);
         }
 
         if (Schema::hasTable($tableName)) {
-            // Etape 2: prioriser le compteur cache, plus representatif pendant l'import.
             $processed = Cache::get("import_processed_{$tableName}");
 
-            // Etape 3: fallback DB si le cache n'est plus disponible.
             if ($processed === null) {
                 $processed = DB::table($tableName)->count();
             }
 
-            // Etape 4: calculer le pourcentage a partir du total estime.
             $total = Cache::get("import_total_{$tableName}") ?? 0;
             $percent = 0;
 
@@ -224,7 +399,6 @@ class StockImportController extends Controller
             ]);
         }
 
-        // Etape 5: reponse neutre si table absente.
         return response()->json(['count' => 0, 'percent' => 0, 'total' => 0, 'status' => 'idle', 'error' => null]);
     }
 }

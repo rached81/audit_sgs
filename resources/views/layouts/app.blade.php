@@ -30,6 +30,7 @@
                         <a href="{{ route('import.form') }}" class="py-4 px-2 {{ request()->routeIs('import.*') ? 'border-b-4 border-yellow-400 font-semibold' : 'text-green-100 hover:text-white transition duration-300' }}">Importation</a>
                         <a href="{{ route('consultation.index') }}" class="py-4 px-2 {{ request()->routeIs('consultation.*') ? 'border-b-4 border-yellow-400 font-semibold' : 'text-green-100 hover:text-white transition duration-300' }}">Consultation</a>
                         <a href="{{ route('audit.index') }}" class="py-4 px-2 {{ request()->routeIs('audit.*') ? 'border-b-4 border-yellow-400 font-semibold' : 'text-green-100 hover:text-white transition duration-300' }}">Audit</a>
+                        <a href="{{ route('archive.index') }}" class="py-4 px-2 {{ request()->routeIs('archive.*') ? 'border-b-4 border-yellow-400 font-semibold' : 'text-green-100 hover:text-white transition duration-300' }}">Archive</a>
                         @if(Auth::user()->profile === 'admin')
                             <a href="{{ route('users.index') }}" class="py-4 px-2 {{ request()->routeIs('users.*') ? 'border-b-4 border-yellow-400 font-semibold' : 'text-green-100 hover:text-white transition duration-300' }}">Utilisateurs</a>
                         @endif

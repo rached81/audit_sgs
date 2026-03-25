@@ -49,5 +49,100 @@
             </div>
         </form>
     </div>
+
+    <script>
+        // Safety net: if a fullscreen overlay/backdrop is left/injected,
+        // it can block clicks on the login form. Neutralize it on /login.
+        (function () {
+            function closeDialogs() {
+                for (const d of document.querySelectorAll('dialog[open]')) {
+                    try { d.close(); } catch (e) { /* no-op */ }
+                }
+            }
+
+            function isBlockingFullscreenOverlay(el) {
+                if (!(el instanceof HTMLElement)) return false;
+                if (el.id === 'loadingOverlay') return true;
+                if (el.classList.contains('modal-backdrop')) return true;
+                if (el.classList.contains('overlay')) return true;
+                if (el.classList.contains('backdrop')) return true;
+
+                const cs = window.getComputedStyle(el);
+                if (cs.position !== 'fixed') return false;
+
+                // Covers the viewport (common overlay pattern)
+                const covers =
+                    (cs.top === '0px' || cs.inset === '0px') &&
+                    (cs.left === '0px' || cs.inset === '0px') &&
+                    (cs.right === '0px' || cs.inset === '0px') &&
+                    (cs.bottom === '0px' || cs.inset === '0px');
+
+                if (!covers) return false;
+
+                // Blocks interaction
+                const blocks = cs.pointerEvents !== 'none' && cs.display !== 'none' && cs.visibility !== 'hidden' && cs.opacity !== '0';
+                if (!blocks) return false;
+
+                // Above typical page content (Tailwind overlays often z-50)
+                const z = Number.parseInt(cs.zIndex || '0', 10);
+                if (Number.isFinite(z) && z >= 40) return true;
+
+                // If z-index is 'auto' but background is not fully transparent, still suspicious
+                const bg = cs.backgroundColor || '';
+                if (bg && !bg.includes('rgba(0, 0, 0, 0)') && bg !== 'transparent') return true;
+
+                return false;
+            }
+
+            function removeBlockingOverlays(root = document) {
+                closeDialogs();
+
+                const candidates = [
+                    root.getElementById?.('loadingOverlay'),
+                    ...root.querySelectorAll?.('.modal-backdrop, .overlay, .backdrop') || [],
+                ].filter(Boolean);
+
+                for (const el of candidates) {
+                    try { el.remove(); } catch (e) { /* no-op */ }
+                }
+
+                // Also remove any generic fullscreen fixed overlay that blocks clicks
+                for (const el of document.querySelectorAll('body *')) {
+                    if (isBlockingFullscreenOverlay(el)) {
+                        try { el.remove(); } catch (e) { /* no-op */ }
+                    }
+                }
+
+                // Unblock scroll/clicks if something modified them
+                document.documentElement.style.pointerEvents = '';
+                document.body.style.pointerEvents = '';
+                document.body.style.overflow = '';
+            }
+
+            try {
+                removeBlockingOverlays(document);
+
+                // Watch for overlays injected after load (rare, but matches your symptom).
+                const obs = new MutationObserver((mutations) => {
+                    for (const m of mutations) {
+                        for (const node of m.addedNodes || []) {
+                            if (node instanceof HTMLElement) {
+                                if (isBlockingFullscreenOverlay(node)) {
+                                    try { node.remove(); } catch (e) { /* no-op */ }
+                                }
+                            }
+                        }
+                    }
+                });
+                obs.observe(document.documentElement, { childList: true, subtree: true });
+
+                // Extra pass after first paint
+                requestAnimationFrame(() => removeBlockingOverlays(document));
+                setTimeout(() => removeBlockingOverlays(document), 250);
+            } catch (e) {
+                // no-op
+            }
+        })();
+    </script>
 </body>
 </html>

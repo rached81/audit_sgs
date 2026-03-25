@@ -289,6 +289,8 @@ class StockImport implements ToCollection, WithHeadingRow, WithChunkReading, Wit
 
         // Etape 2: normaliser espaces + separateur decimal.
         $s = str_replace([' ', "\u{00A0}"], '', (string) $v);
+        // If the source includes backslashes, sanitize them before numeric parsing.
+        $s = str_replace('\\', '', $s);
         $s = str_replace(',', '.', $s);
 
         // Etape 3: retourner un float strict ou la valeur par defaut si non numerique.

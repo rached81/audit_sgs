@@ -2,7 +2,7 @@
 
 @section('content')
     <!-- Loading Overlay -->
-    <div id="loadingOverlay" class="fixed inset-0 bg-opacity-50 z-50 flex items-center justify-center hidden">
+    <div id="loadingOverlay" class="fixed inset-0 bg-black/50 z-50 flex items-center justify-center hidden">
         <div class="bg-white p-8 rounded-lg shadow-xl text-center max-w-md mx-4 w-full">
             <div id="loadingSpinner" class="loader ease-linear rounded-full border-8 border-t-8 border-gray-200 h-16 w-16 mx-auto mb-4 border-indigo-600"></div>
             <h2 class="text-xl font-bold text-gray-800 mb-2">Import en cours...</h2>
@@ -19,6 +19,14 @@
             </div>
         </div>
     </div>
+
+    <div id="importProgressConfig"
+         data-run-id="{{ session('import_run_id') }}"
+         data-table="{{ session('import_table') }}"
+         data-events-url="{{ route('import.events') }}"
+         data-status-url="{{ route('import.status') }}"
+         data-consultation-url="{{ route('consultation.index') }}"
+         class="hidden"></div>
 
     <h1 class="text-3xl font-bold mb-8 text-center text-indigo-700">Import des Stocks</h1>
 
@@ -135,6 +143,24 @@
     <script>
         let selectedFileSize = 0;
 
+        function ensureOverlayCloseButton() {
+            const overlay = document.getElementById('loadingOverlay');
+            const container = document.querySelector('#loadingOverlay > div');
+            if (!overlay || !container) return;
+
+            if (!document.getElementById('closeOverlayBtn')) {
+                const btn = document.createElement('button');
+                btn.id = 'closeOverlayBtn';
+                btn.type = 'button';
+                btn.innerText = "Réduire en arrière-plan";
+                btn.className = "mt-4 text-sm text-gray-500 hover:text-gray-700 underline";
+                btn.onclick = function() {
+                    overlay.classList.add('hidden');
+                };
+                container.appendChild(btn);
+            }
+        }
+
         function handleFileSelect(input) {
             if (input.files && input.files[0]) {
                 document.getElementById('filename').innerText = input.files[0].name;
@@ -148,20 +174,113 @@
             document.getElementById('progressBar').style.width = '0%';
             document.getElementById('progressText').innerText = '0%';
             document.getElementById('timeEstimate').innerText = "Analyse du fichier...";
+            ensureOverlayCloseButton();
         };
 
-        // Check if we need to poll for progress (Flash session variable passed to view)
-        @if(session('import_table'))
-            const importTable = "{{ session('import_table') }}";
-            const statusUrl = "{{ route('import.status') }}?table=" + importTable;
+        const cfg = document.getElementById('importProgressConfig');
+        const importRunId = cfg?.dataset?.runId || '';
+        const importTable = cfg?.dataset?.table || '';
+        const routeEvents = cfg?.dataset?.eventsUrl || '';
+        const routeStatus = cfg?.dataset?.statusUrl || '';
+        const routeConsultation = cfg?.dataset?.consultationUrl || '';
+
+        // Check if we need to follow progress after redirect
+        if (importRunId && routeEvents) {
+            const sseUrl = routeEvents + "?runId=" + encodeURIComponent(importRunId);
             const estimateDiv = document.getElementById('timeEstimate');
             const overlay = document.getElementById('loadingOverlay');
             const progressBar = document.getElementById('progressBar');
             const progressText = document.getElementById('progressText');
             const spinner = document.getElementById('loadingSpinner');
 
-            // Re-open overlay if it was closed (page reload)
             overlay.classList.remove('hidden');
+            ensureOverlayCloseButton();
+
+            let isFinished = false;
+            const source = new EventSource(sseUrl);
+
+            source.addEventListener('progress', (event) => {
+                if (isFinished) return;
+
+                let data = {};
+                try {
+                    data = JSON.parse(event.data);
+                } catch (e) {
+                    console.error(e);
+                    return;
+                }
+
+                const overall = data.overall_percent ?? 0;
+                const stage = data.stage ?? 'running';
+                const stagePc = data.stage_percent ?? 0;
+                const processed = data.processed ?? 0;
+                const total = data.total ?? 0;
+                const status = data.status ?? 'running';
+                const error = data.error ?? null;
+                const eta = data.eta_seconds ?? null;
+
+                progressBar.style.width = overall + '%';
+                progressText.innerText = overall + '%';
+
+                let stageLabel = stage;
+                if (stage === 'cleaning') stageLabel = 'Nettoyage';
+                if (stage === 'inserting') stageLabel = 'Insertion';
+                if (stage === 'starting') stageLabel = 'Initialisation';
+
+                const etaTxt = eta === null ? '' : (" • ETA ~ " + eta + "s");
+                if (stage === 'inserting') {
+                    estimateDiv.innerText = stageLabel + " (" + stagePc + "%)" + " • Lignes: " + processed + " / " + total + etaTxt;
+                } else if (stage === 'cleaning') {
+                    estimateDiv.innerText = stageLabel + " (" + stagePc + "%)" + " • Lignes prêtes: " + processed + etaTxt;
+                } else {
+                    estimateDiv.innerText = stageLabel + "..." + etaTxt;
+                }
+
+                if (error || status === 'failed') {
+                    isFinished = true;
+                    spinner.style.display = 'none';
+                    estimateDiv.innerHTML = "<span class='text-red-600 font-bold'>Import echoue : " + (error ?? "Erreur inconnue") + "</span>";
+                    source.close();
+                    return;
+                }
+
+                if (status === 'done') {
+                    isFinished = true;
+                    estimateDiv.innerHTML = "<span class='text-green-600 font-bold text-lg'>Importation terminee avec succes !</span>";
+                    spinner.style.display = 'none';
+
+                    if (!document.getElementById('finishBtn')) {
+                        const btn = document.createElement('a');
+                        btn.id = 'finishBtn';
+                        btn.href = routeConsultation;
+                        btn.innerText = "Consulter les donnees";
+                        btn.className = "mt-6 inline-block w-full bg-green-600 hover:bg-green-700 text-white font-bold py-3 px-4 rounded shadow transition-colors";
+                        document.querySelector('#loadingOverlay > div').appendChild(btn);
+                    }
+
+                    const closeBtn = document.getElementById('closeOverlayBtn');
+                    if (closeBtn) closeBtn.remove();
+
+                    source.close();
+                }
+            });
+
+            source.onerror = (err) => {
+                console.error(err);
+                estimateDiv.innerHTML = "<span class='text-red-600 font-bold'>Connexion au suivi SSE interrompue. Vous pouvez reduire l'overlay et reessayer (recharger la page).</span>";
+                ensureOverlayCloseButton();
+            };
+        } else if (importTable && routeStatus) {
+            // Fallback legacy polling (table-based)
+            const statusUrl = routeStatus + "?table=" + encodeURIComponent(importTable);
+            const estimateDiv = document.getElementById('timeEstimate');
+            const overlay = document.getElementById('loadingOverlay');
+            const progressBar = document.getElementById('progressBar');
+            const progressText = document.getElementById('progressText');
+            const spinner = document.getElementById('loadingSpinner');
+
+            overlay.classList.remove('hidden');
+            ensureOverlayCloseButton();
 
             let isFinished = false;
 
@@ -188,7 +307,6 @@
 
                         estimateDiv.innerText = "Lignes importees : " + count + " / " + total;
 
-                        // Update Bar
                         progressBar.style.width = pc + '%';
                         progressText.innerText = pc + '%';
 
@@ -203,40 +321,29 @@
                         if (status === 'done') {
                              isFinished = true;
                              estimateDiv.innerHTML = "<span class='text-green-600 font-bold text-lg'>Importation terminee avec succes !</span>";
-                             spinner.style.display = 'none'; // Hide spinner
+                             spinner.style.display = 'none';
 
-                             // Add a finish button
                              if (!document.getElementById('finishBtn')) {
                                  const btn = document.createElement('a');
                                  btn.id = 'finishBtn';
-                                 btn.href = "{{ route('consultation.index') }}";
+                                 btn.href = routeConsultation;
                                  btn.innerText = "Consulter les donnees";
                                  btn.className = "mt-6 inline-block w-full bg-green-600 hover:bg-green-700 text-white font-bold py-3 px-4 rounded shadow transition-colors";
                                  document.querySelector('#loadingOverlay > div').appendChild(btn);
                              }
 
-                             // Remove Close button if exists
                              const closeBtn = document.getElementById('closeOverlayBtn');
                              if(closeBtn) closeBtn.remove();
 
                              clearInterval(pollInterval);
                         }
                     })
-                    .catch(err => console.error(err));
-            }, 1000); // Poll every 1 second
-
-            // Add Close Button (only while running)
-            const container = document.querySelector('#loadingOverlay > div');
-            if (!document.getElementById('closeOverlayBtn')) {
-                const btn = document.createElement('button');
-                btn.id = 'closeOverlayBtn';
-                btn.innerText = "Réduire en arrière-plan";
-                btn.className = "mt-4 text-sm text-gray-500 hover:text-gray-700 underline";
-                btn.onclick = function() {
-                    overlay.classList.add('hidden');
-                };
-                container.appendChild(btn);
-            }
-        @endif
+                    .catch(err => {
+                        console.error(err);
+                        estimateDiv.innerHTML = "<span class='text-red-600 font-bold'>Erreur reseau lors du suivi d'import. Vous pouvez reduire l'overlay et reessayer plus tard.</span>";
+                        ensureOverlayCloseButton();
+                    });
+            }, 1000);
+        }
     </script>
 @endsection
