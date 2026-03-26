@@ -6,7 +6,8 @@
             <div>
                 <h1 class="text-2xl font-bold text-gray-800">Archive</h1>
                 <p class="text-sm text-gray-500 mt-1">
-                    Consultation des fichiers originaux uploadés (conservés uniquement si le mode debug import est activé).
+                <!-- (conservés uniquement si le mode debug import est activé) -->
+                    Consultation des fichiers originaux uploadés .
                 </p>
             </div>
 
