@@ -2,7 +2,6 @@
 
 namespace App\Http\Controllers;
 
-use App\Jobs\ImportStockJob;
 use App\Services\ColumnMapper;
 use App\Services\FastHeaderDetector;
 use Illuminate\Http\Request;
@@ -253,49 +252,60 @@ class StockImportController extends Controller
         try {
             $runId = (string) str()->uuid();
 
-            Log::channel('import')->info('import.controller.job.scheduled_after_response', [
+            Log::channel('import')->info('import.controller.job.scheduled_background_process', [
                 'run_id' => $runId,
                 'table' => $tableName,
                 'queue_connection' => config('queue.default'),
             ]);
 
-            // No queue/worker: run the job after the HTTP response is sent.
-            // This keeps the same UX (popup + polling) while remaining synchronous on the server.
-            app()->terminating(function () use ($fullPath, $relativePath, $tableName, $mapping, $headingRow, $runId) {
-                try {
-                    if (!Schema::hasTable($tableName)) {
-                        $exitCode = Artisan::call('stock:create-table', [
-                            'table' => $tableName,
-                        ]);
+            // No queue/worker: execute the import in a detached PHP process.
+            // This keeps polling responsive on single-threaded dev servers.
+            if (!Schema::hasTable($tableName)) {
+                $exitCode = Artisan::call('stock:create-table', [
+                    'table' => $tableName,
+                ]);
 
-                        Log::channel('import')->info('import.controller.table.create_attempted', [
-                            'run_id' => $runId,
-                            'table' => $tableName,
-                            'exit_code' => $exitCode,
-                            'artisan_output' => trim(Artisan::output()),
-                        ]);
+                Log::channel('import')->info('import.controller.table.create_attempted', [
+                    'run_id' => $runId,
+                    'table' => $tableName,
+                    'exit_code' => $exitCode,
+                    'artisan_output' => trim(Artisan::output()),
+                ]);
 
-                        if ($exitCode !== 0) {
-                            Cache::put("import_error_{$tableName}", 'Echec de la creation de la table.', 3600);
-                            Cache::put("import_status_{$tableName}", 'failed', 3600);
-                            Cache::put("import_done_{$tableName}", false, 3600);
-                            return;
-                        }
-                    }
-
-                    (new ImportStockJob($fullPath, $relativePath, $tableName, $mapping, $headingRow, $runId))->handle();
-                } catch (\Throwable $e) {
-                    Cache::put("import_error_{$tableName}", $e->getMessage(), 3600);
+                if ($exitCode !== 0) {
+                    Cache::put("import_error_{$tableName}", 'Echec de la creation de la table.', 3600);
                     Cache::put("import_status_{$tableName}", 'failed', 3600);
                     Cache::put("import_done_{$tableName}", false, 3600);
-                    Log::channel('import')->error('import.controller.after_response.failed', [
-                        'run_id' => $runId,
-                        'table' => $tableName,
-                        'message' => $e->getMessage(),
-                        'exception' => get_class($e),
+
+                    return redirect()->route('import.form')->withErrors([
+                        'table_name' => "Echec de la creation de la table $tableName.",
                     ]);
                 }
-            });
+            }
+
+            $mappingBase64 = base64_encode(json_encode($mapping, JSON_UNESCAPED_UNICODE));
+            $artisanCmd =
+                escapeshellarg(PHP_BINARY) . ' ' .
+                escapeshellarg(base_path('artisan')) . ' stock:run-import-job ' .
+                '--full-path=' . escapeshellarg($fullPath) . ' ' .
+                '--relative-path=' . escapeshellarg((string) ($relativePath ?? '')) . ' ' .
+                '--table=' . escapeshellarg($tableName) . ' ' .
+                '--heading-row=' . escapeshellarg((string) ((int) $headingRow)) . ' ' .
+                '--run-id=' . escapeshellarg($runId) . ' ' .
+                '--mapping=' . escapeshellarg($mappingBase64);
+
+            if (DIRECTORY_SEPARATOR === '\\') {
+                // Windows: fully detached background launch.
+                pclose(popen('start /B "" ' . $artisanCmd . ' > NUL 2>&1', 'r'));
+            } else {
+                // Linux/macOS
+                exec($artisanCmd . ' > /dev/null 2>&1 &');
+            }
+
+            Log::channel('import')->info('import.controller.job.background_process.spawned', [
+                'run_id' => $runId,
+                'table' => $tableName,
+            ]);
 
             return redirect()->route('import.form')
                 ->with('import_table', $tableName) // backward compatibility for old polling
@@ -388,6 +398,14 @@ class StockImportController extends Controller
         $total = Cache::get("import_total_{$tableName}");
         $error = Cache::get("import_error_{$tableName}");
         $status = Cache::get("import_status_{$tableName}");
+        $tableState = Cache::get("import_table_state_{$tableName}");
+        if (!is_array($tableState)) {
+            $tableState = [];
+        }
+        $stage = (string) ($tableState['stage'] ?? '');
+        $etaSeconds = $tableState['eta_seconds'] ?? null;
+        $stagePercent = $tableState['stage_percent'] ?? null;
+        $overallPercent = $tableState['overall_percent'] ?? null;
 
         // If cache exists (even before table creation), return it so UI isn't stuck.
         if ($status !== null || $processed !== null || $total !== null || $error !== null) {
@@ -414,6 +432,10 @@ class StockImportController extends Controller
                 'total' => $total,
                 'status' => $status,
                 'error' => $error,
+                'stage' => $stage !== '' ? $stage : ($total > 0 ? 'inserting' : 'starting'),
+                'eta_seconds' => $etaSeconds,
+                'stage_percent' => $stagePercent,
+                'overall_percent' => $overallPercent,
             ]);
         }
 

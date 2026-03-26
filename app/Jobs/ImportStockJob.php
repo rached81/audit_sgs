@@ -58,6 +58,17 @@ class ImportStockJob implements ShouldQueue
             'started_at' => time(),
             'updated_at' => time(),
         ], $ttlSeconds);
+        $this->putTableState([
+            'status' => 'running',
+            'stage' => 'starting',
+            'overall_percent' => 0,
+            'stage_percent' => 0,
+            'processed' => 0,
+            'total' => 0,
+            'eta_seconds' => null,
+            'started_at' => time(),
+            'updated_at' => time(),
+        ], $ttlSeconds);
 
         if ($debugEnabled) {
             $debugRelativeDir = "import_debug/{$this->tableName}/{$this->runId}";
@@ -88,6 +99,16 @@ class ImportStockJob implements ShouldQueue
                 'overall_percent' => 0,
                 'eta_seconds' => null,
             ], $ttlSeconds);
+            $this->putTableState([
+                'status' => 'running',
+                'stage' => 'cleaning',
+                'overall_percent' => 0,
+                'stage_percent' => 0,
+                'processed' => 0,
+                'total' => 0,
+                'eta_seconds' => null,
+                'updated_at' => time(),
+            ], $ttlSeconds);
 
             $normalized = $importer->normalizeToCsv(
                 $this->fullPath,
@@ -108,6 +129,16 @@ class ImportStockJob implements ShouldQueue
                     $overallPercent = (int) min(20, round($stagePercent * 0.2));
 
                     $this->putRunState([
+                        'status' => 'running',
+                        'stage' => 'cleaning',
+                        'stage_percent' => $stagePercent,
+                        'overall_percent' => $overallPercent,
+                        'processed' => (int) ($p['written_rows'] ?? 0),
+                        'total' => 0,
+                        'eta_seconds' => $eta,
+                        'updated_at' => time(),
+                    ], $ttlSeconds);
+                    $this->putTableState([
                         'status' => 'running',
                         'stage' => 'cleaning',
                         'stage_percent' => $stagePercent,
@@ -151,6 +182,16 @@ class ImportStockJob implements ShouldQueue
                 'inserting_started_at' => time(),
                 'updated_at' => time(),
             ], $ttlSeconds);
+            $this->putTableState([
+                'status' => 'running',
+                'stage' => 'inserting',
+                'stage_percent' => 0,
+                'overall_percent' => 20,
+                'processed' => 0,
+                'total' => $total,
+                'eta_seconds' => null,
+                'updated_at' => time(),
+            ], $ttlSeconds);
 
             $stepStart = microtime(true);
             $insertingStartAt = microtime(true);
@@ -172,6 +213,16 @@ class ImportStockJob implements ShouldQueue
                     $overallPercent = 20 + (int) min(80, round(($stagePercent * 80) / 100));
 
                     $this->putRunState([
+                        'status' => 'running',
+                        'stage' => 'inserting',
+                        'stage_percent' => $stagePercent,
+                        'overall_percent' => min(99, $overallPercent),
+                        'processed' => $processed,
+                        'total' => $total,
+                        'eta_seconds' => $eta,
+                        'updated_at' => time(),
+                    ], $ttlSeconds);
+                    $this->putTableState([
                         'status' => 'running',
                         'stage' => 'inserting',
                         'stage_percent' => $stagePercent,
@@ -211,6 +262,17 @@ class ImportStockJob implements ShouldQueue
 
             Cache::put("import_done_{$this->tableName}", true, 3600);
             Cache::put("import_status_{$this->tableName}", 'done', 3600);
+            $this->putTableState([
+                'status' => 'done',
+                'stage' => 'done',
+                'stage_percent' => 100,
+                'overall_percent' => 100,
+                'processed' => (int) (Cache::get("import_processed_{$this->tableName}") ?? 0),
+                'total' => (int) (Cache::get("import_total_{$this->tableName}") ?? 0),
+                'eta_seconds' => 0,
+                'updated_at' => time(),
+                'finished_at' => time(),
+            ], $ttlSeconds);
             $this->putRunState([
                 'status' => 'done',
                 'stage' => 'done',
@@ -235,6 +297,14 @@ class ImportStockJob implements ShouldQueue
             Cache::put("import_error_{$this->tableName}", $e->getMessage(), 3600);
             Cache::put("import_status_{$this->tableName}", 'failed', 3600);
             Cache::put("import_done_{$this->tableName}", false, 3600);
+            $this->putTableState([
+                'status' => 'failed',
+                'stage' => 'failed',
+                'error' => $e->getMessage(),
+                'eta_seconds' => null,
+                'updated_at' => time(),
+                'finished_at' => time(),
+            ], $ttlSeconds);
             $this->putRunState([
                 'status' => 'failed',
                 'stage' => 'failed',
@@ -337,6 +407,21 @@ class ImportStockJob implements ShouldQueue
         $merged['table'] = $this->tableName;
         $merged['updated_at'] = $merged['updated_at'] ?? time();
         Cache::put($this->runCacheKey(), $merged, $ttlSeconds);
+    }
+
+    private function putTableState(array $data, int $ttlSeconds): void
+    {
+        $key = "import_table_state_{$this->tableName}";
+        $existing = Cache::get($key);
+        if (!is_array($existing)) {
+            $existing = [];
+        }
+
+        $merged = array_merge($existing, $data);
+        $merged['run_id'] = $this->runId;
+        $merged['table'] = $this->tableName;
+        $merged['updated_at'] = $merged['updated_at'] ?? time();
+        Cache::put($key, $merged, $ttlSeconds);
     }
 
     private function pruneDebugRuns(string $tableName, int $keepRuns): void

@@ -57,6 +57,40 @@ class StockCsvImporter
             'debug_relative_dir' => $debugRelativeDir,
         ]);
 
+        // Prefer streaming XLSX reader for big files (faster & low memory).
+        $ext = strtolower((string) pathinfo($sourcePath, PATHINFO_EXTENSION));
+        $spoutFactory = 'OpenSpout\\Reader\\Common\\Creator\\ReaderFactory';
+        if ($ext === 'xlsx' && class_exists($spoutFactory)) {
+            $spoutResult = $this->normalizeToCsvWithSpout(
+                $sourcePath,
+                $mapping,
+                $headingRow,
+                $relativeCsvPath,
+                $csvPath,
+                $debugRelativeDir,
+                $debugWriteSkipped,
+                $debugMaxSkippedRows,
+                $skippedHandle,
+                $progress
+            );
+            // Safety net: if OpenSpout produced 0 data rows, fall back to PhpSpreadsheet.
+            // Some XLSX files contain sparse rows (many empty cells); OpenSpout's cell iteration
+            // can still lead to misalignment depending on the sheet structure.
+            if (($spoutResult['rows'] ?? 0) > 0) {
+                return $spoutResult;
+            }
+
+            Log::channel('import')->warning('import.csv.normalize.openspout.zero_rows_fallback_to_phpspreadsheet', [
+                'source_path' => $sourcePath,
+                'heading_row' => $headingRow,
+                'mapping' => $mapping,
+                'relative_csv_path' => $relativeCsvPath,
+                'debug_relative_dir' => $debugRelativeDir,
+                'spout_scanned_rows' => $spoutResult['scanned_rows'] ?? null,
+                'spout_written_rows' => $spoutResult['rows'] ?? null,
+            ]);
+        }
+
         $reader = IOFactory::createReaderForFile($sourcePath);
         $reader->setReadDataOnly(true);
         if (method_exists($reader, 'setReadEmptyCells')) {
@@ -119,15 +153,17 @@ class StockCsvImporter
                 'end_row' => $endRow,
             ]);
 
-            for ($rowNumber = $startRow; $rowNumber <= $endRow; $rowNumber++) {
-                $scannedRows++;
+            // Read the whole chunk in one call (much faster than per-row rangeToArray).
+            $rows = $sheet->rangeToArray(
+                "A{$startRow}:{$highestColumn}{$endRow}",
+                null,
+                true,
+                false
+            ) ?? [];
 
-                $row = $sheet->rangeToArray(
-                    "A{$rowNumber}:{$highestColumn}{$rowNumber}",
-                    null,
-                    true,
-                    false
-                )[0] ?? [];
+            foreach ($rows as $offset => $row) {
+                $rowNumber = $startRow + $offset;
+                $scannedRows++;
 
                 $transformed = $this->mapRow($row, $mapping, $headers);
                 if ($transformed['row'] === null) {
@@ -241,6 +277,286 @@ class StockCsvImporter
             'rows' => $writtenRows,
             'scanned_rows' => $scannedRows,
             'highest_row' => $highestRow,
+        ];
+    }
+
+    private function normalizeToCsvWithSpout(
+        string $sourcePath,
+        array $mapping,
+        int $headingRow,
+        string $relativeCsvPath,
+        string $csvPath,
+        ?string $debugRelativeDir,
+        bool $debugWriteSkipped,
+        int $debugMaxSkippedRows,
+        $skippedHandle,
+        ?callable $progress
+    ): array {
+        $spoutFactory = 'OpenSpout\\Reader\\Common\\Creator\\ReaderFactory';
+
+        $writtenRows = 0;
+        $scannedRows = 0;
+        // OpenSpout doesn't provide total row count cheaply; we can still read it
+        // from the XLSX metadata via PhpSpreadsheet (fast) for accurate % progress.
+        $highestRow = 0;
+        try {
+            $metaReader = IOFactory::createReaderForFile($sourcePath);
+            if (method_exists($metaReader, 'listWorksheetInfo')) {
+                $info = call_user_func([$metaReader, 'listWorksheetInfo'], $sourcePath);
+                $highestRow = (int) ($info[0]['totalRows'] ?? 0);
+            }
+        } catch (\Throwable $e) {
+            $highestRow = 0;
+        }
+
+        $skipCounters = [
+            'empty_article' => 0,
+            'group' => 0,
+            'total' => 0,
+            'sparse' => 0,
+        ];
+        $skipSamples = [];
+        $skippedDebugCount = 0;
+
+        $handle = fopen($csvPath, 'wb');
+        fputcsv($handle, self::TARGET_COLUMNS, ',', '"', '');
+
+        /** @var \OpenSpout\Reader\ReaderInterface $reader */
+        $reader = call_user_func([$spoutFactory, 'createFromFile'], $sourcePath);
+        $reader->open($sourcePath);
+
+        $headerIndex = null;
+        $fieldIndex = null;
+        $headers = [];
+
+        try {
+            foreach ($reader->getSheetIterator() as $sheet) {
+                $rowNumber = 0;
+                foreach ($sheet->getRowIterator() as $row) {
+                    $rowNumber++;
+                    if ($rowNumber < $headingRow) {
+                        continue;
+                    }
+
+                    // IMPORTANT: OpenSpout's getCells() iteration is sparse (it may omit empty cells),
+                    // which would shift indexes and break our header->index mapping.
+                    // Row::toArray() preserves column positions by including empty cells.
+                    $values = $row->toArray();
+
+                    if ($rowNumber === $headingRow) {
+                        $headers = $values;
+                        $headerIndex = $this->buildHeaderIndexMap($headers);
+                        $fieldIndex = $this->buildFieldIndexMap($mapping, $headerIndex);
+                        continue;
+                    }
+
+                    $scannedRows++;
+                    $transformed = $this->mapRowFast($values, $fieldIndex);
+                    if ($transformed['row'] === null) {
+                        $reason = $transformed['skip_reason'] ?? 'unknown';
+                        if (isset($skipCounters[$reason])) {
+                            $skipCounters[$reason]++;
+                        }
+
+                        if ($debugWriteSkipped && is_resource($skippedHandle)) {
+                            $canWrite = $debugMaxSkippedRows === 0 || $skippedDebugCount < $debugMaxSkippedRows;
+                            if ($canWrite) {
+                                $nonEmptyCellsSample = [];
+                                foreach ($values as $cellIndex => $cellValue) {
+                                    $txt = $this->normalizeCellText($cellValue);
+                                    if ($txt !== '') {
+                                        $nonEmptyCellsSample[] = [$cellIndex, $txt];
+                                        if (count($nonEmptyCellsSample) >= 10) break;
+                                    }
+                                }
+
+                                fputcsv(
+                                    $skippedHandle,
+                                    [
+                                        $rowNumber,
+                                        $reason,
+                                        $transformed['article'] ?? '',
+                                        $transformed['designation'] ?? '',
+                                        json_encode($nonEmptyCellsSample),
+                                    ],
+                                    ',',
+                                    '"'
+                                );
+                                $skippedDebugCount++;
+                            }
+                        }
+
+                        if (count($skipSamples) < 10) {
+                            $skipSamples[] = [
+                                'row_number' => $rowNumber,
+                                'reason' => $reason,
+                                'article' => $transformed['article'] ?? null,
+                                'designation' => $transformed['designation'] ?? null,
+                            ];
+                        }
+
+                        continue;
+                    }
+
+                    fputcsv($handle, $transformed['row'], ',', '"', '');
+                    $writtenRows++;
+
+                    if ($progress && ($scannedRows % 2000 === 0)) {
+                        $progress([
+                            'stage' => 'cleaning',
+                            'scanned_rows' => $scannedRows,
+                            'written_rows' => $writtenRows,
+                            'highest_row' => $highestRow,
+                        ]);
+                    }
+                }
+                // Only first sheet
+                break;
+            }
+        } finally {
+            $reader->close();
+            fclose($handle);
+            if (is_resource($skippedHandle)) {
+                fclose($skippedHandle);
+            }
+        }
+
+        Log::channel('import')->info('import.csv.normalize.finished', [
+            'source_path' => $sourcePath,
+            'relative_csv_path' => $relativeCsvPath,
+            'scanned_rows' => $scannedRows,
+            'written_rows' => $writtenRows,
+            'skip_counters' => $skipCounters,
+            'skip_samples' => $skipSamples,
+            'debug_relative_dir' => $debugRelativeDir,
+            'reader' => 'openspout',
+        ]);
+
+        if ($debugWriteSkipped) {
+            $meta = [
+                'source_path' => $sourcePath,
+                'heading_row' => $headingRow,
+                'relative_csv_path' => $relativeCsvPath,
+                'scanned_rows' => $scannedRows,
+                'written_rows' => $writtenRows,
+                'skip_counters' => $skipCounters,
+                'skip_samples' => $skipSamples,
+                'skipped_debug_count' => $skippedDebugCount,
+                'debug_max_skipped_rows' => $debugMaxSkippedRows,
+                'reader' => 'openspout',
+            ];
+            Storage::put($debugRelativeDir . '/meta.json', json_encode($meta, JSON_UNESCAPED_SLASHES));
+        }
+
+        return [
+            'csv_path' => $csvPath,
+            'relative_csv_path' => $relativeCsvPath,
+            'rows' => $writtenRows,
+            'scanned_rows' => $scannedRows,
+            'highest_row' => $highestRow,
+        ];
+    }
+
+    private function buildHeaderIndexMap(array $headers): array
+    {
+        $map = [];
+        foreach ($headers as $i => $header) {
+            // Normalize header labels from spreadsheet exports (NBSP, newlines, tabs).
+            $h = (string) $header;
+            $h = str_replace(["\u{00A0}", "\r", "\n", "\t"], ' ', $h);
+            $h = trim(preg_replace('/\s+/u', ' ', $h) ?? $h);
+            if ($h === '') continue;
+
+            $keys = [
+                $h,
+                mb_strtolower($h),
+                Str::slug($h, '_'),
+                Str::slug($h, ''),
+            ];
+
+            foreach ($keys as $k) {
+                if ($k === '') continue;
+                $map[$k] = $i;
+            }
+        }
+        return $map;
+    }
+
+    private function buildFieldIndexMap(array $mapping, array $headerIndex): array
+    {
+        $defaults = [
+            'article' => ['article', 'artcod'],
+            'designation' => ['designation', 'libelle'],
+            'initial' => ['initial'],
+            'entree' => ['entree'],
+            'sortie' => ['sortie'],
+            'finale' => ['finale'],
+            'pump' => ['pump', 'pmp'],
+            'valeur' => ['valeur'],
+        ];
+
+        $out = [];
+        foreach ($defaults as $field => $fallbacks) {
+            $mapped = $mapping[$field] ?? null;
+            $candidates = [];
+            if (is_string($mapped) && $mapped !== '') {
+                $mappedNorm = (string) $mapped;
+                $mappedNorm = str_replace(["\u{00A0}", "\r", "\n", "\t"], ' ', $mappedNorm);
+                $mappedNorm = trim(preg_replace('/\s+/u', ' ', $mappedNorm) ?? $mappedNorm);
+                $candidates[] = $mappedNorm;
+                $candidates[] = mb_strtolower($mappedNorm);
+                $candidates[] = Str::slug($mappedNorm, '_');
+                $candidates[] = Str::slug($mappedNorm, '');
+            } else {
+                $candidates = $fallbacks;
+            }
+
+            $idx = null;
+            foreach ($candidates as $c) {
+                if (array_key_exists($c, $headerIndex)) {
+                    $idx = (int) $headerIndex[$c];
+                    break;
+                }
+            }
+            $out[$field] = $idx;
+        }
+        return $out;
+    }
+
+    private function mapRowFast(array $rowValues, array $fieldIndex): array
+    {
+        $article = $this->normalizeTrimString(($fieldIndex['article'] ?? null) === null ? null : ($rowValues[$fieldIndex['article']] ?? null));
+        $designation = $this->normalizeTrimString(($fieldIndex['designation'] ?? null) === null ? null : ($rowValues[$fieldIndex['designation']] ?? null));
+        $skipReason = $this->detectSkipReason($article, $designation, $rowValues);
+
+        if ($skipReason !== null) {
+            return [
+                'row' => null,
+                'skip_reason' => $skipReason,
+                'article' => $article,
+                'designation' => $designation,
+            ];
+        }
+
+        $get = function (string $field) use ($rowValues, $fieldIndex) {
+            $idx = $fieldIndex[$field] ?? null;
+            return $idx === null ? null : ($rowValues[$idx] ?? null);
+        };
+
+        return [
+            'row' => [
+                $article,
+                $designation,
+                $this->toDecimal($get('initial'), 0.0),
+                $this->toDecimal($get('entree'), 0.0),
+                $this->toDecimal($get('sortie'), 0.0),
+                $this->toDecimal($get('finale'), 0.0),
+                $this->toDecimal($get('pump'), 0.0),
+                $this->toDecimal($get('valeur'), 0.0),
+            ],
+            'skip_reason' => null,
+            'article' => $article,
+            'designation' => $designation,
         ];
     }
 
@@ -441,7 +757,7 @@ LOAD DATA LOCAL INFILE '{$escapedPath}'
 INTO TABLE {$quotedTable}
 FIELDS TERMINATED BY ','
 OPTIONALLY ENCLOSED BY '"'
-NULL DEFINED AS ''
+ESCAPED BY ''
 LINES TERMINATED BY '\n'
 IGNORE 1 LINES
 (`ARTICLE`, `DESIGNATION`, `INITIAL`, `ENTREE`, `SORTIE`, `FINALE`, `PUMP`, `VALEUR`)

@@ -2,8 +2,20 @@
 
 @section('content')
     <!-- Loading Overlay -->
-    <div id="loadingOverlay" class="fixed inset-0 bg-black/50 z-50 flex items-center justify-center hidden">
-        <div class="bg-white p-8 rounded-lg shadow-xl text-center max-w-md mx-4 w-full">
+        <div id="loadingOverlay" class="fixed inset-0 bg-black/50 z-50 flex items-center justify-center hidden">
+        <div class="bg-white p-8 rounded-lg shadow-xl text-center max-w-md mx-4 w-full relative">
+            <div class="absolute top-3 right-3 flex items-center gap-2">
+                <button id="minimizeOverlayBtn" type="button"
+                        class="h-9 w-9 rounded-lg bg-gray-100 hover:bg-gray-200 text-gray-700 font-extrabold leading-none"
+                        aria-label="Réduire">
+                    &minus;
+                </button>
+                <button id="closeOverlayBtn" type="button"
+                        class="h-9 w-9 rounded-lg bg-gray-100 hover:bg-gray-200 text-gray-700 font-extrabold leading-none"
+                        aria-label="Fermer">
+                    &times;
+                </button>
+            </div>
             <div id="loadingSpinner" class="loader ease-linear rounded-full border-8 border-t-8 border-gray-200 h-16 w-16 mx-auto mb-4 border-indigo-600"></div>
             <h2 class="text-xl font-bold text-gray-800 mb-2">Import en cours...</h2>
 
@@ -13,9 +25,21 @@
             </div>
             <div id="progressText" class="text-sm text-indigo-700 font-bold mb-4">0%</div>
 
-            <p class="text-gray-600 mb-4">Veuillez patienter, ne fermez pas la page.</p>
+            <p id="infoText" class="text-gray-600 mb-4">Veuillez patienter, ne fermez pas la page.</p>
+
+            <!-- Steps -->
+            <div class="flex items-center justify-between gap-2 text-[11px] font-semibold text-gray-500 mb-4">
+                <div id="stepStarting" class="flex-1 rounded-full px-2 py-1 bg-indigo-50 text-indigo-700">Upload</div>
+                <div id="stepCleaning" class="flex-1 rounded-full px-2 py-1 bg-gray-100">Nettoyage</div>
+                <div id="stepInserting" class="flex-1 rounded-full px-2 py-1 bg-gray-100">Insertion</div>
+            </div>
+
             <div id="timeEstimate" class="text-sm font-semibold text-indigo-600 bg-indigo-50 py-2 px-4 rounded">
                 Initialisation...
+            </div>
+
+            <div class="mt-4 text-xs text-gray-500">
+                Astuce: vous pouvez réduire le popup (−) et continuer à travailler.
             </div>
         </div>
     </div>
@@ -27,6 +51,28 @@
          data-status-url="{{ route('import.status', [], false) }}"
          data-consultation-url="{{ route('consultation.index', [], false) }}"
          class="hidden"></div>
+
+    <!-- Sticky mini progress bar (shown when overlay is reduced) -->
+    <div id="importSticky"
+         class="hidden fixed bottom-4 left-1/2 -translate-x-1/2 z-50 w-[min(46rem,calc(100vw-2rem))] bg-white border border-gray-200 shadow-lg rounded-xl px-4 py-3">
+        <div class="flex items-center justify-between gap-3">
+            <div class="min-w-0">
+                <div class="text-sm font-bold text-gray-800 truncate">Import en cours</div>
+                <div id="stickyText" class="text-xs text-gray-600 truncate">Initialisation…</div>
+            </div>
+            <div class="flex items-center gap-2 shrink-0">
+                <button id="stickyOpenBtn" type="button" class="px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold">
+                    Ouvrir
+                </button>
+                <button id="stickyDismissBtn" type="button" class="px-3 py-1.5 rounded-lg bg-gray-100 hover:bg-gray-200 text-gray-700 text-sm font-semibold">
+                    Masquer
+                </button>
+            </div>
+        </div>
+        <div class="mt-2 w-full bg-gray-200 rounded-full h-2 overflow-hidden">
+            <div id="stickyBar" class="bg-indigo-600 h-2 transition-all duration-300" style="width: 0%"></div>
+        </div>
+    </div>
 
     <h1 class="text-3xl font-bold mb-8 text-center text-indigo-700">Import des Stocks</h1>
 
@@ -143,22 +189,44 @@
     <script>
         let selectedFileSize = 0;
 
-        function ensureOverlayCloseButton() {
-            const overlay = document.getElementById('loadingOverlay');
-            const container = document.querySelector('#loadingOverlay > div');
-            if (!overlay || !container) return;
+        function setSteps(active) {
+            const starting = document.getElementById('stepStarting');
+            const cleaning = document.getElementById('stepCleaning');
+            const inserting = document.getElementById('stepInserting');
+            if (!starting || !cleaning || !inserting) return;
 
-            if (!document.getElementById('closeOverlayBtn')) {
-                const btn = document.createElement('button');
-                btn.id = 'closeOverlayBtn';
-                btn.type = 'button';
-                btn.innerText = "Réduire en arrière-plan";
-                btn.className = "mt-4 text-sm text-gray-500 hover:text-gray-700 underline";
-                btn.onclick = function() {
-                    overlay.classList.add('hidden');
-                };
-                container.appendChild(btn);
-            }
+            const makeActive = (el) => el.className = "flex-1 rounded-full px-2 py-1 bg-indigo-50 text-indigo-700";
+            const makeDone = (el) => el.className = "flex-1 rounded-full px-2 py-1 bg-green-50 text-green-700";
+            const makeIdle = (el) => el.className = "flex-1 rounded-full px-2 py-1 bg-gray-100 text-gray-500";
+
+            makeIdle(starting); makeIdle(cleaning); makeIdle(inserting);
+            if (active === 'starting') { makeActive(starting); }
+            if (active === 'cleaning') { makeDone(starting); makeActive(cleaning); }
+            if (active === 'inserting') { makeDone(starting); makeDone(cleaning); makeActive(inserting); }
+            if (active === 'done') { makeDone(starting); makeDone(cleaning); makeDone(inserting); }
+            if (active === 'failed') { makeIdle(starting); makeIdle(cleaning); makeIdle(inserting); makeActive(inserting); }
+        }
+
+        function showSticky() {
+            const sticky = document.getElementById('importSticky');
+            if (sticky) sticky.classList.remove('hidden');
+        }
+
+        function hideSticky() {
+            const sticky = document.getElementById('importSticky');
+            if (sticky) sticky.classList.add('hidden');
+        }
+
+        function showOverlay() {
+            const overlay = document.getElementById('loadingOverlay');
+            if (overlay) overlay.classList.remove('hidden');
+            hideSticky();
+        }
+
+        function hideOverlay() {
+            const overlay = document.getElementById('loadingOverlay');
+            if (overlay) overlay.classList.add('hidden');
+            showSticky();
         }
 
         function handleFileSelect(input) {
@@ -170,11 +238,11 @@
 
         document.getElementById('importForm').onsubmit = function() {
             // Show Loading Overlay
-            document.getElementById('loadingOverlay').classList.remove('hidden');
+            showOverlay();
             document.getElementById('progressBar').style.width = '0%';
             document.getElementById('progressText').innerText = '0%';
-            document.getElementById('timeEstimate').innerText = "Analyse du fichier...";
-            ensureOverlayCloseButton();
+            document.getElementById('timeEstimate').innerText = "Upload & analyse du fichier...";
+            setSteps('starting');
         };
 
         const cfg = document.getElementById('importProgressConfig');
@@ -193,8 +261,8 @@
             const progressText = document.getElementById('progressText');
             const spinner = document.getElementById('loadingSpinner');
 
-            overlay.classList.remove('hidden');
-            ensureOverlayCloseButton();
+            showOverlay();
+            setSteps('starting');
 
             let isFinished = false;
             const source = new EventSource(sseUrl);
@@ -221,11 +289,18 @@
 
                 progressBar.style.width = overall + '%';
                 progressText.innerText = overall + '%';
+                const stickyBar = document.getElementById('stickyBar');
+                const stickyText = document.getElementById('stickyText');
+                if (stickyBar) stickyBar.style.width = overall + '%';
+                if (stickyText) stickyText.innerText = (stage === 'starting' ? 'Upload…' : 'Import…') + " (" + overall + "%)";
 
                 let stageLabel = stage;
                 if (stage === 'cleaning') stageLabel = 'Nettoyage';
                 if (stage === 'inserting') stageLabel = 'Insertion';
-                if (stage === 'starting') stageLabel = 'Initialisation';
+                if (stage === 'starting') stageLabel = 'Upload';
+                if (stage === 'starting') setSteps('starting');
+                if (stage === 'cleaning') setSteps('cleaning');
+                if (stage === 'inserting') setSteps('inserting');
 
                 const etaTxt = eta === null ? '' : (" • ETA ~ " + eta + "s");
                 if (stage === 'inserting') {
@@ -239,6 +314,7 @@
                 if (error || status === 'failed') {
                     isFinished = true;
                     spinner.style.display = 'none';
+                    setSteps('failed');
                     estimateDiv.innerHTML = "<span class='text-red-600 font-bold'>Import echoue : " + (error ?? "Erreur inconnue") + "</span>";
                     source.close();
                     return;
@@ -249,6 +325,8 @@
                     estimateDiv.innerHTML = "<span class='text-green-600 font-bold text-lg'>Importation terminee avec succes !</span>";
                     document.getElementById('infoText').innerText = "";
                     spinner.style.display = 'none';
+                    setSteps('done');
+                    hideSticky();
 
                     if (!document.getElementById('finishBtn')) {
                         const btn = document.createElement('a');
@@ -269,7 +347,7 @@
             source.onerror = (err) => {
                 console.error(err);
                 estimateDiv.innerHTML = "<span class='text-red-600 font-bold'>Connexion au suivi SSE interrompue. Vous pouvez reduire l'overlay et reessayer (recharger la page).</span>";
-                ensureOverlayCloseButton();
+                showSticky();
             };
         } else if (importTable && routeStatus) {
             // Fallback legacy polling (table-based)
@@ -280,8 +358,8 @@
             const progressText = document.getElementById('progressText');
             const spinner = document.getElementById('loadingSpinner');
 
-            overlay.classList.remove('hidden');
-            ensureOverlayCloseButton();
+            showOverlay();
+            setSteps('starting');
 
             let isFinished = false;
             let consecutiveFailures = 0;
@@ -312,13 +390,41 @@
                     })
                     .then(data => {
                         consecutiveFailures = 0;
-                        let pc = data.percent || 0;
+                        // Prefer backend stage-aware progress when available.
+                        let pc = Number.isFinite(data.overall_percent) ? data.overall_percent : (data.percent || 0);
                         let count = data.count || 0;
                         let total = data.total || '?';
                         let status = data.status || 'running';
                         let error = data.error || null;
+                        let stage = data.stage || '';
+                        let eta = data.eta_seconds ?? null;
+                        let stagePc = data.stage_percent ?? null;
 
-                        estimateDiv.innerText = "Lignes importees : " + count + " / " + total;
+                        const etaTxt = eta === null ? '' : (" • ETA ~ " + eta + "s");
+                        if (stage === 'cleaning') {
+                            setSteps('cleaning');
+                            const sp = stagePc === null ? '' : (" (" + stagePc + "%)");
+                            estimateDiv.innerText = "Nettoyage" + sp + " • Lignes prêtes: " + count + etaTxt;
+                        } else if (stage === 'inserting' || stage === 'done') {
+                            setSteps('inserting');
+                            estimateDiv.innerText = "Insertion • Lignes: " + count + " / " + total + etaTxt;
+                        } else {
+                            setSteps('starting');
+                            estimateDiv.innerText = "Initialisation..." + etaTxt;
+                        }
+                        const stickyBar = document.getElementById('stickyBar');
+                        const stickyText = document.getElementById('stickyText');
+                        if (stickyBar) stickyBar.style.width = pc + '%';
+                        if (stickyText) {
+                            if (stage === 'cleaning') {
+                                const sp = stagePc === null ? '' : (" (" + stagePc + "%)");
+                                stickyText.innerText = "Nettoyage" + sp + " • Lignes prêtes: " + count;
+                            } else if (stage === 'inserting' || stage === 'done') {
+                                stickyText.innerText = "Insertion • " + count + " / " + total + " (" + pc + "%)";
+                            } else {
+                                stickyText.innerText = "Initialisation… (" + pc + "%)";
+                            }
+                        }
 
                         progressBar.style.width = pc + '%';
                         progressText.innerText = pc + '%';
@@ -326,6 +432,7 @@
                         if (error || status === 'failed') {
                              isFinished = true;
                              spinner.style.display = 'none';
+                             setSteps('failed');
                              estimateDiv.innerHTML = "<span class='text-red-600 font-bold'>Import echoue : " + (error ?? "Erreur inconnue") + "</span>";
                              clearInterval(pollInterval);
                              return;
@@ -336,6 +443,8 @@
                              estimateDiv.innerHTML = "<span class='text-green-600 font-bold text-lg'>Importation terminee avec succes !</span>";
                              document.getElementById('infoText').innerText = "";
                              spinner.style.display = 'none';
+                             setSteps('done');
+                             hideSticky();
 
                              if (!document.getElementById('finishBtn')) {
                                  const btn = document.createElement('a');
@@ -363,9 +472,20 @@
                                 "<span class='text-red-600 font-bold'>Suivi temporairement indisponible (" + consecutiveFailures + ").</span><br>" +
                                 "<span class='text-gray-600 text-sm'>On reessaie automatiquement... Vous pouvez reduire l'overlay.</span>";
                         }
-                        ensureOverlayCloseButton();
+                        showSticky();
                     });
             }, 2000);
         }
+
+        // Background/details UX wiring
+            const minimizeOverlayBtn = document.getElementById('minimizeOverlayBtn');
+            const closeOverlayBtn = document.getElementById('closeOverlayBtn');
+        const stickyOpenBtn = document.getElementById('stickyOpenBtn');
+        const stickyDismissBtn = document.getElementById('stickyDismissBtn');
+
+            if (minimizeOverlayBtn) minimizeOverlayBtn.onclick = hideOverlay;
+            if (closeOverlayBtn) closeOverlayBtn.onclick = hideOverlay;
+        if (stickyOpenBtn) stickyOpenBtn.onclick = showOverlay;
+        if (stickyDismissBtn) stickyDismissBtn.onclick = hideSticky;
     </script>
 @endsection
