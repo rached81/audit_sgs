@@ -38,8 +38,8 @@
                             <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-2">
                                 <div class="font-semibold text-gray-800">
                                     {{ $e['table'] }}
-                                    <span class="text-gray-400 font-normal">/</span>
-                                    <span class="text-gray-600 font-mono text-sm">{{ $e['run_id'] }}</span>
+                                    <!-- <span class="text-gray-400 font-normal">/</span>
+                                    <span class="text-gray-600 font-mono text-sm">{{ $e['run_id'] }}</span> -->
                                 </div>
                                 <div class="text-xs text-gray-500">
                                     {{ count($e['originals']) }} fichier(s)
