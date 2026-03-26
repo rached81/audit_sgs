@@ -279,6 +279,18 @@ class ImportStockJob implements ShouldQueue
                     }
                 }
 
+                // Keep only the latest archived runs for this table.
+                try {
+                    $keepRuns = (int) config('import_perf.debug_keep_runs_per_table', 1);
+                    $this->pruneDebugRuns($this->tableName, $keepRuns);
+                } catch (\Throwable $e) {
+                    Log::channel('import')->warning('import.job.debug.prune.failed', [
+                        'run_id' => $this->runId,
+                        'table' => $this->tableName,
+                        'message' => $e->getMessage(),
+                    ]);
+                }
+
                 // In debug mode, we don't delete temp files to allow investigation.
                 return;
             }
@@ -325,5 +337,56 @@ class ImportStockJob implements ShouldQueue
         $merged['table'] = $this->tableName;
         $merged['updated_at'] = $merged['updated_at'] ?? time();
         Cache::put($this->runCacheKey(), $merged, $ttlSeconds);
+    }
+
+    private function pruneDebugRuns(string $tableName, int $keepRuns): void
+    {
+        if ($keepRuns < 1) {
+            $keepRuns = 1;
+        }
+
+        $tableDir = "import_debug/{$tableName}";
+        if (!Storage::exists($tableDir)) {
+            return;
+        }
+
+        $runDirs = Storage::directories($tableDir);
+        if (count($runDirs) <= $keepRuns) {
+            return;
+        }
+
+        // Sort by newest modification timestamp first.
+        usort($runDirs, function (string $a, string $b): int {
+            return $this->runDirLastModified($b) <=> $this->runDirLastModified($a);
+        });
+
+        $toDelete = array_slice($runDirs, $keepRuns);
+        foreach ($toDelete as $dir) {
+            Storage::deleteDirectory($dir);
+            Log::channel('import')->info('import.job.debug.prune.deleted', [
+                'run_id' => $this->runId,
+                'table' => $this->tableName,
+                'deleted_dir' => $dir,
+            ]);
+        }
+    }
+
+    private function runDirLastModified(string $dir): int
+    {
+        $files = Storage::allFiles($dir);
+        $last = 0;
+        foreach ($files as $file) {
+            try {
+                $ts = (int) Storage::lastModified($file);
+                if ($ts > $last) {
+                    $last = $ts;
+                }
+            } catch (\Throwable $e) {
+                // ignore unreadable file and continue
+            }
+        }
+
+        // If empty, keep deterministic but low timestamp.
+        return $last;
     }
 }

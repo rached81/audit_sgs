@@ -22,4 +22,7 @@ return [
     // Limite optionnelle du nombre de lignes skippees ecrites (utile si fichier tres gros).
     // Si 0 => pas de limite.
     'debug_max_skipped_rows' => (int) env('IMPORT_DEBUG_MAX_SKIPPED_ROWS', 0),
+
+    // Nombre de runs archives a conserver par table (1 = uniquement le dernier).
+    'debug_keep_runs_per_table' => (int) env('IMPORT_DEBUG_KEEP_RUNS_PER_TABLE', 1),
 ];
