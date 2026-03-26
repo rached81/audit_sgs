@@ -23,9 +23,9 @@
     <div id="importProgressConfig"
          data-run-id="{{ session('import_run_id') }}"
          data-table="{{ session('import_table') }}"
-         data-events-url="{{ route('import.events') }}"
-         data-status-url="{{ route('import.status') }}"
-         data-consultation-url="{{ route('consultation.index') }}"
+         data-events-url="{{ route('import.events', [], false) }}"
+         data-status-url="{{ route('import.status', [], false) }}"
+         data-consultation-url="{{ route('consultation.index', [], false) }}"
          class="hidden"></div>
 
     <h1 class="text-3xl font-bold mb-8 text-center text-indigo-700">Import des Stocks</h1>
@@ -247,6 +247,7 @@
                 if (status === 'done') {
                     isFinished = true;
                     estimateDiv.innerHTML = "<span class='text-green-600 font-bold text-lg'>Importation terminee avec succes !</span>";
+                    document.getElementById('infoText').innerText = "";
                     spinner.style.display = 'none';
 
                     if (!document.getElementById('finishBtn')) {
@@ -283,11 +284,13 @@
             ensureOverlayCloseButton();
 
             let isFinished = false;
+            let consecutiveFailures = 0;
+            const maxFailuresBeforeWarning = 3;
 
             let pollInterval = setInterval(function() {
                 if (isFinished) return;
 
-                fetch(statusUrl)
+                fetch(statusUrl, { headers: { 'Accept': 'application/json' } })
                     .then(response => {
                         if (response.status === 401) {
                             window.location.href = '/login';
@@ -296,9 +299,19 @@
                         if (!response.ok) {
                             throw new Error('Network response was not ok');
                         }
-                        return response.json();
+                        // If backend returns HTML (redirect/login/error page), JSON parsing will fail.
+                        return response.text().then((txt) => {
+                            try {
+                                return JSON.parse(txt);
+                            } catch (e) {
+                                const err = new Error('Non-JSON response from status endpoint');
+                                err.raw = txt?.slice?.(0, 2000);
+                                throw err;
+                            }
+                        });
                     })
                     .then(data => {
+                        consecutiveFailures = 0;
                         let pc = data.percent || 0;
                         let count = data.count || 0;
                         let total = data.total || '?';
@@ -321,6 +334,7 @@
                         if (status === 'done') {
                              isFinished = true;
                              estimateDiv.innerHTML = "<span class='text-green-600 font-bold text-lg'>Importation terminee avec succes !</span>";
+                             document.getElementById('infoText').innerText = "";
                              spinner.style.display = 'none';
 
                              if (!document.getElementById('finishBtn')) {
@@ -340,10 +354,18 @@
                     })
                     .catch(err => {
                         console.error(err);
-                        estimateDiv.innerHTML = "<span class='text-red-600 font-bold'>Erreur reseau lors du suivi d'import. Vous pouvez reduire l'overlay et reessayer plus tard.</span>";
+                        consecutiveFailures++;
+                        // In synchronous mode (especially with single-threaded dev server),
+                        // /import/status can temporarily fail while the import is running.
+                        // Keep retrying instead of showing a hard error immediately.
+                        if (consecutiveFailures >= maxFailuresBeforeWarning) {
+                            estimateDiv.innerHTML =
+                                "<span class='text-red-600 font-bold'>Suivi temporairement indisponible (" + consecutiveFailures + ").</span><br>" +
+                                "<span class='text-gray-600 text-sm'>On reessaie automatiquement... Vous pouvez reduire l'overlay.</span>";
+                        }
                         ensureOverlayCloseButton();
                     });
-            }, 1000);
+            }, 2000);
         }
     </script>
 @endsection

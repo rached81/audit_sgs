@@ -194,26 +194,12 @@ class StockImportController extends Controller
             'queue_connection' => config('queue.default'),
         ]);
 
-        if (!Schema::hasTable($tableName)) {
-            $exitCode = Artisan::call('stock:create-table', [
-                'table' => $tableName,
-            ]);
-
-            Log::channel('import')->info('import.controller.table.create_attempted', [
-                'table' => $tableName,
-                'exit_code' => $exitCode,
-                'artisan_output' => trim(Artisan::output()),
-            ]);
-
-            if ($exitCode !== 0) {
-                Log::channel('import')->error('import.controller.table.create_failed', [
-                    'table' => $tableName,
-                    'artisan_output' => trim(Artisan::output()),
-                ]);
-
-                return redirect()->route('import.form')->withErrors(['table_name' => 'Echec de la creation de la table.']);
-            }
-        }
+        // Init progress cache early so the front can poll "initialisation"
+        Cache::put("import_total_{$tableName}", 0, 3600);
+        Cache::put("import_processed_{$tableName}", 0, 3600);
+        Cache::forget("import_error_{$tableName}");
+        Cache::forget("import_done_{$tableName}");
+        Cache::put("import_status_{$tableName}", 'running', 3600);
 
         try {
             $articleType = strtolower((string) Schema::getColumnType($tableName, 'ARTICLE'));
@@ -267,17 +253,54 @@ class StockImportController extends Controller
         try {
             $runId = (string) str()->uuid();
 
-            Log::channel('import')->info('import.controller.job.dispatched', [
+            Log::channel('import')->info('import.controller.job.scheduled_after_response', [
                 'run_id' => $runId,
                 'table' => $tableName,
                 'queue_connection' => config('queue.default'),
             ]);
 
-            ImportStockJob::dispatch($fullPath, $relativePath, $tableName, $mapping, $headingRow, $runId);
+            // No queue/worker: run the job after the HTTP response is sent.
+            // This keeps the same UX (popup + polling) while remaining synchronous on the server.
+            app()->terminating(function () use ($fullPath, $relativePath, $tableName, $mapping, $headingRow, $runId) {
+                try {
+                    if (!Schema::hasTable($tableName)) {
+                        $exitCode = Artisan::call('stock:create-table', [
+                            'table' => $tableName,
+                        ]);
+
+                        Log::channel('import')->info('import.controller.table.create_attempted', [
+                            'run_id' => $runId,
+                            'table' => $tableName,
+                            'exit_code' => $exitCode,
+                            'artisan_output' => trim(Artisan::output()),
+                        ]);
+
+                        if ($exitCode !== 0) {
+                            Cache::put("import_error_{$tableName}", 'Echec de la creation de la table.', 3600);
+                            Cache::put("import_status_{$tableName}", 'failed', 3600);
+                            Cache::put("import_done_{$tableName}", false, 3600);
+                            return;
+                        }
+                    }
+
+                    (new ImportStockJob($fullPath, $relativePath, $tableName, $mapping, $headingRow, $runId))->handle();
+                } catch (\Throwable $e) {
+                    Cache::put("import_error_{$tableName}", $e->getMessage(), 3600);
+                    Cache::put("import_status_{$tableName}", 'failed', 3600);
+                    Cache::put("import_done_{$tableName}", false, 3600);
+                    Log::channel('import')->error('import.controller.after_response.failed', [
+                        'run_id' => $runId,
+                        'table' => $tableName,
+                        'message' => $e->getMessage(),
+                        'exception' => get_class($e),
+                    ]);
+                }
+            });
 
             return redirect()->route('import.form')
                 ->with('import_table', $tableName) // backward compatibility for old polling
-                ->with('import_run_id', $runId);
+                // Keep empty to force legacy polling (no SSE needed).
+                ->with('import_run_id', '');
         } catch (\Exception $e) {
             Log::channel('import')->error('import.controller.pipeline.failed', [
                 'table' => $tableName,
@@ -361,16 +384,17 @@ class StockImportController extends Controller
             return response()->json(['count' => 0, 'percent' => 0, 'total' => 0, 'status' => 'idle', 'error' => null]);
         }
 
-        if (Schema::hasTable($tableName)) {
-            $processed = Cache::get("import_processed_{$tableName}");
+        $processed = Cache::get("import_processed_{$tableName}");
+        $total = Cache::get("import_total_{$tableName}");
+        $error = Cache::get("import_error_{$tableName}");
+        $status = Cache::get("import_status_{$tableName}");
 
-            if ($processed === null) {
-                $processed = DB::table($tableName)->count();
-            }
+        // If cache exists (even before table creation), return it so UI isn't stuck.
+        if ($status !== null || $processed !== null || $total !== null || $error !== null) {
+            $processed = $processed ?? 0;
+            $total = $total ?? 0;
 
-            $total = Cache::get("import_total_{$tableName}") ?? 0;
             $percent = 0;
-
             if ($total > 0) {
                 $percent = round(($processed / $total) * 100);
                 if ($percent > 100) {
@@ -378,13 +402,7 @@ class StockImportController extends Controller
                 }
             }
 
-            $error = Cache::get("import_error_{$tableName}");
-            $status = Cache::get("import_status_{$tableName}") ?? 'running';
-
-            if ($error) {
-                $status = 'failed';
-            }
-
+            $status = $status ?? ($error ? 'failed' : 'running');
             if (Cache::get("import_done_{$tableName}") === true && !$error) {
                 $percent = 100;
                 $status = 'done';
@@ -397,6 +415,12 @@ class StockImportController extends Controller
                 'status' => $status,
                 'error' => $error,
             ]);
+        }
+
+        // Fallback: if cache absent but table exists, infer progress.
+        if (Schema::hasTable($tableName)) {
+            $processed = DB::table($tableName)->count();
+            return response()->json(['count' => $processed, 'percent' => 0, 'total' => 0, 'status' => 'running', 'error' => null]);
         }
 
         return response()->json(['count' => 0, 'percent' => 0, 'total' => 0, 'status' => 'idle', 'error' => null]);
