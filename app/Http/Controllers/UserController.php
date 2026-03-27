@@ -2,12 +2,20 @@
 
 namespace App\Http\Controllers;
 
+use App\Services\ImportOperationLogger;
+use Illuminate\Support\Facades\DB;
 use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Schema;
 
 class UserController extends Controller
 {
+    public function __construct(
+        private ImportOperationLogger $operationLogger
+    ) {
+    }
+
     public function index()
     {
         $users = User::all();
@@ -37,7 +45,29 @@ class UserController extends Controller
         // Populate name from nom/prenom if not explicitly handled
         $validated['name'] = $validated['nom'] . ' ' . $validated['prenom'];
 
-        User::create($validated);
+        $created = User::create(array_merge($validated, [
+            'must_change_password' => true,
+        ]));
+
+        $actor = $request->user();
+        $actorName = trim((string) (($actor?->prenom ?? '') . ' ' . ($actor?->nom ?? '')));
+        $this->operationLogger->log([
+            'run_id' => (string) str()->uuid(),
+            'table_name' => 'users',
+            'operation' => 'create_user',
+            'status' => 'success',
+            'user_id' => $actor?->id,
+            'user_matricule' => $actor?->matricule,
+            'user_name' => $actorName !== '' ? $actorName : null,
+            'ip_address' => $request->ip(),
+            'message' => "Ajout utilisateur {$created->matricule}.",
+            'context' => [
+                'created_user_id' => $created->id,
+                'created_matricule' => $created->matricule,
+                'created_profile' => $created->profile,
+                'route' => $request->route()?->getName(),
+            ],
+        ]);
 
         return redirect()->route('users.index')->with('success', 'Utilisateur créé avec succès.');
     }
@@ -75,7 +105,58 @@ class UserController extends Controller
 
     public function destroy(User $user)
     {
-        $user->delete();
+        $request = request();
+        $actor = $request->user();
+        $actorName = trim((string) (($actor?->prenom ?? '') . ' ' . ($actor?->nom ?? '')));
+        $hasOperations = $this->userHasOperations($user);
+
+        if ($hasOperations) {
+            $user->delete(); // logical delete (SoftDelete)
+            $mode = 'logical';
+        } else {
+            $user->forceDelete(); // hard delete if no operation history
+            $mode = 'physical';
+        }
+
+        $this->operationLogger->log([
+            'run_id' => (string) str()->uuid(),
+            'table_name' => 'users',
+            'operation' => 'delete_user',
+            'status' => 'success',
+            'user_id' => $actor?->id,
+            'user_matricule' => $actor?->matricule,
+            'user_name' => $actorName !== '' ? $actorName : null,
+            'ip_address' => $request->ip(),
+            'message' => "Suppression utilisateur {$user->matricule} ({$mode}).",
+            'context' => [
+                'deleted_user_id' => $user->id,
+                'deleted_matricule' => $user->matricule,
+                'mode' => $mode,
+                'route' => $request->route()?->getName(),
+            ],
+        ]);
+
         return redirect()->route('users.index')->with('success', 'Utilisateur supprimé avec succès.');
+    }
+
+    private function userHasOperations(User $user): bool
+    {
+        $hasUserLogs = Schema::hasTable('user_logs')
+            && DB::table('user_logs')->where('user_id', $user->id)->exists();
+        if ($hasUserLogs) {
+            return true;
+        }
+
+        $hasImportOps = Schema::hasTable('import_operation_logs')
+            && DB::table('import_operation_logs')
+                ->where(function ($q) use ($user) {
+                    $q->where('user_id', $user->id);
+                    if (!empty($user->matricule)) {
+                        $q->orWhere('user_matricule', $user->matricule);
+                    }
+                })
+                ->exists();
+
+        return $hasImportOps;
     }
 }
