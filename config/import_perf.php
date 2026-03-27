@@ -25,4 +25,11 @@ return [
 
     // Nombre de runs archives a conserver par table (1 = uniquement le dernier).
     'debug_keep_runs_per_table' => (int) env('IMPORT_DEBUG_KEEP_RUNS_PER_TABLE', 1),
+
+    // Liste des matricules autorises a consulter les logs sensibles (super admin).
+    // Exemple .env: IMPORT_SUPER_ADMIN_MATRICULES=19684,12345
+    'super_admin_matricules' => array_values(array_filter(array_map(
+        static fn (string $v) => trim($v),
+        explode(',', (string) env('IMPORT_SUPER_ADMIN_MATRICULES', ''))
+    ))),
 ];

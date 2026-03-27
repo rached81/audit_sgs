@@ -4,8 +4,10 @@ namespace App\Http\Controllers;
 
 use App\Services\ColumnMapper;
 use App\Services\FastHeaderDetector;
+use App\Services\ImportOperationLogger;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Artisan;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -16,6 +18,11 @@ use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class StockImportController extends Controller
 {
+    public function __construct(
+        private ImportOperationLogger $operationLogger
+    ) {
+    }
+
     public function showForm()
     {
         return view('import');
@@ -66,6 +73,8 @@ class StockImportController extends Controller
 
         try {
             $requiredColumns = ['article', 'designation', 'initial', 'entree', 'sortie', 'finale', 'pump', 'valeur'];
+            $runId = (string) str()->uuid();
+            $this->logImportCreation($request, $runId, $tableName, $path, $file->getSize());
 
             $detector = new FastHeaderDetector($mapper);
             $result = $detector->detect($fullPath, $requiredColumns, 10);
@@ -107,7 +116,9 @@ class StockImportController extends Controller
                     $bestAnalysis['mapping'],
                     $bestRowIndex,
                     $path,
-                    $request->ajax() || $request->expectsJson()
+                    $request->ajax() || $request->expectsJson(),
+                    $runId,
+                    $request
                 );
             }
 
@@ -129,6 +140,7 @@ class StockImportController extends Controller
                 'annee' => $annee,
                 'programme' => $programme,
                 'reseau' => $reseau,
+                'run_id' => $runId,
             ]);
         } catch (\Exception $e) {
             Storage::delete($path);
@@ -151,12 +163,14 @@ class StockImportController extends Controller
             'table_name' => 'required|string',
             'mapping' => 'required|array',
             'heading_row' => 'required|integer',
+            'run_id' => 'nullable|string',
         ]);
 
         $path = $request->input('file_path');
         $tableName = $request->input('table_name');
         $mapping = $request->input('mapping');
         $headingRow = (int) $request->input('heading_row');
+        $runId = (string) ($request->input('run_id') ?: str()->uuid());
         $fullPath = Storage::path($path);
 
         Log::channel('import')->info('import.controller.mapping.confirmed', [
@@ -178,10 +192,19 @@ class StockImportController extends Controller
                 ->withErrors(['file' => 'Le fichier temporaire a expire. Veuillez reessayer.']);
         }
 
-        return $this->doImport($fullPath, $tableName, $mapping, $headingRow, $path, false);
+        return $this->doImport($fullPath, $tableName, $mapping, $headingRow, $path, false, $runId, $request);
     }
 
-    private function doImport($fullPath, $tableName, $mapping, $headingRow = 1, $relativePath = null, bool $asJson = false)
+    private function doImport(
+        $fullPath,
+        $tableName,
+        $mapping,
+        $headingRow = 1,
+        $relativePath = null,
+        bool $asJson = false,
+        ?string $runId = null,
+        ?Request $request = null
+    )
     {
         @set_time_limit(0);
 
@@ -263,7 +286,12 @@ class StockImportController extends Controller
         }
 
         try {
-            $runId = (string) str()->uuid();
+            $runId = $runId ?: (string) str()->uuid();
+            $initiator = Auth::user();
+            $initiatorId = $initiator?->id;
+            $initiatorMatricule = (string) ($initiator?->matricule ?? '');
+            $initiatorName = trim((string) (($initiator?->prenom ?? '') . ' ' . ($initiator?->nom ?? '')));
+            $initiatorIp = (string) ($request?->ip() ?? request()->ip());
 
             Log::channel('import')->info('import.controller.job.scheduled_background_process', [
                 'run_id' => $runId,
@@ -311,7 +339,11 @@ class StockImportController extends Controller
                 '--table=' . escapeshellarg($tableName) . ' ' .
                 '--heading-row=' . escapeshellarg((string) ((int) $headingRow)) . ' ' .
                 '--run-id=' . escapeshellarg($runId) . ' ' .
-                '--mapping=' . escapeshellarg($mappingBase64);
+                '--mapping=' . escapeshellarg($mappingBase64) . ' ' .
+                '--initiator-id=' . escapeshellarg((string) ($initiatorId ?? '')) . ' ' .
+                '--initiator-matricule=' . escapeshellarg($initiatorMatricule) . ' ' .
+                '--initiator-name=' . escapeshellarg($initiatorName) . ' ' .
+                '--initiator-ip=' . escapeshellarg($initiatorIp);
 
             if (DIRECTORY_SEPARATOR === '\\') {
                 // Windows: fully detached background launch.
@@ -481,5 +513,32 @@ class StockImportController extends Controller
         }
 
         return response()->json(['count' => 0, 'percent' => 0, 'total' => 0, 'status' => 'idle', 'error' => null]);
+    }
+
+    private function logImportCreation(Request $request, string $runId, string $tableName, string $relativePath, ?int $fileSizeBytes): void
+    {
+        $user = $request->user();
+        $userName = trim((string) (($user?->prenom ?? '') . ' ' . ($user?->nom ?? '')));
+
+        $this->operationLogger->log([
+            'run_id' => $runId,
+            'table_name' => $tableName,
+            'operation' => 'create_import',
+            'status' => 'success',
+            'user_id' => $user?->id,
+            'user_matricule' => $user?->matricule,
+            'user_name' => $userName !== '' ? $userName : null,
+            'ip_address' => $request->ip(),
+            'file_path' => $relativePath,
+            'file_size_bytes' => $fileSizeBytes,
+            'message' => 'Creation de l import (upload initial).',
+            'context' => [
+                'route' => $request->route()?->getName(),
+                'programme' => $request->input('programme'),
+                'reseau' => $request->input('reseau'),
+                'annee' => $request->input('annee'),
+                'original_name' => $request->file('file')?->getClientOriginalName(),
+            ],
+        ]);
     }
 }

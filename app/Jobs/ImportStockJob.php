@@ -2,6 +2,7 @@
 
 namespace App\Jobs;
 
+use App\Services\ImportOperationLogger;
 use App\Services\StockCsvImporter;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -22,10 +23,25 @@ class ImportStockJob implements ShouldQueue
     public $mapping;
     public $headingRow;
     public $runId;
+    public $initiatorId;
+    public $initiatorMatricule;
+    public $initiatorName;
+    public $initiatorIp;
 
     public $timeout = 3600;
 
-    public function __construct($fullPath, $relativePath, $tableName, $mapping, $headingRow, $runId = null)
+    public function __construct(
+        $fullPath,
+        $relativePath,
+        $tableName,
+        $mapping,
+        $headingRow,
+        $runId = null,
+        $initiatorId = null,
+        $initiatorMatricule = null,
+        $initiatorName = null,
+        $initiatorIp = null
+    )
     {
         $this->fullPath = $fullPath;
         $this->relativePath = $relativePath;
@@ -33,6 +49,10 @@ class ImportStockJob implements ShouldQueue
         $this->mapping = $mapping;
         $this->headingRow = $headingRow;
         $this->runId = $runId ?: (string) str()->uuid();
+        $this->initiatorId = $initiatorId;
+        $this->initiatorMatricule = $initiatorMatricule;
+        $this->initiatorName = $initiatorName;
+        $this->initiatorIp = $initiatorIp;
     }
 
     public function handle()
@@ -40,6 +60,7 @@ class ImportStockJob implements ShouldQueue
         @set_time_limit(0);
 
         $jobStart = microtime(true);
+        $operationLogger = app(ImportOperationLogger::class);
         $normalized = null;
         $debugRelativeDir = null;
         $debugEnabled = (bool) config('import_perf.debug_enabled', false);
@@ -371,7 +392,21 @@ class ImportStockJob implements ShouldQueue
                     'table' => $this->tableName,
                     'relative_path' => $this->relativePath,
                 ]);
-                Storage::delete($this->relativePath);
+                $deleted = Storage::delete($this->relativePath);
+                $operationLogger->log([
+                    'run_id' => $this->runId,
+                    'table_name' => $this->tableName,
+                    'operation' => 'delete_source_file',
+                    'status' => $deleted ? 'success' : 'failed',
+                    'user_id' => $this->initiatorId,
+                    'user_matricule' => $this->initiatorMatricule,
+                    'user_name' => $this->initiatorName,
+                    'ip_address' => $this->initiatorIp,
+                    'file_path' => $this->relativePath,
+                    'message' => $deleted
+                        ? 'Suppression du fichier source temporaire apres import.'
+                        : 'Echec suppression du fichier source temporaire.',
+                ]);
             }
 
             if (is_array($normalized) && !empty($normalized['relative_csv_path'])) {
@@ -380,7 +415,21 @@ class ImportStockJob implements ShouldQueue
                     'table' => $this->tableName,
                     'relative_csv_path' => $normalized['relative_csv_path'],
                 ]);
-                Storage::delete($normalized['relative_csv_path']);
+                $deleted = Storage::delete($normalized['relative_csv_path']);
+                $operationLogger->log([
+                    'run_id' => $this->runId,
+                    'table_name' => $this->tableName,
+                    'operation' => 'delete_normalized_csv',
+                    'status' => $deleted ? 'success' : 'failed',
+                    'user_id' => $this->initiatorId,
+                    'user_matricule' => $this->initiatorMatricule,
+                    'user_name' => $this->initiatorName,
+                    'ip_address' => $this->initiatorIp,
+                    'file_path' => (string) $normalized['relative_csv_path'],
+                    'message' => $deleted
+                        ? 'Suppression du CSV normalise temporaire apres import.'
+                        : 'Echec suppression du CSV normalise temporaire.',
+                ]);
             }
         }
     }
@@ -452,6 +501,18 @@ class ImportStockJob implements ShouldQueue
                 'run_id' => $this->runId,
                 'table' => $this->tableName,
                 'deleted_dir' => $dir,
+            ]);
+            app(ImportOperationLogger::class)->log([
+                'run_id' => $this->runId,
+                'table_name' => $this->tableName,
+                'operation' => 'delete_debug_run',
+                'status' => 'success',
+                'user_id' => $this->initiatorId,
+                'user_matricule' => $this->initiatorMatricule,
+                'user_name' => $this->initiatorName,
+                'ip_address' => $this->initiatorIp,
+                'file_path' => $dir,
+                'message' => 'Suppression automatique d un ancien run debug.',
             ]);
         }
     }

@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Services\ImportOperationLogger;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Http\Request;
@@ -326,7 +327,50 @@ class StockConsultationController extends Controller
             abort(403, "Action non autorisée.");
         }
 
-        Schema::dropIfExists($tableName);
+        $request = request();
+        $user = $request->user();
+        $logger = app(ImportOperationLogger::class);
+        $runId = (string) str()->uuid();
+        $userName = trim((string) (($user?->prenom ?? '') . ' ' . ($user?->nom ?? '')));
+
+        try {
+            Schema::dropIfExists($tableName);
+            $logger->log([
+                'run_id' => $runId,
+                'table_name' => $tableName,
+                'operation' => 'delete_import_table',
+                'status' => 'success',
+                'user_id' => $user?->id,
+                'user_matricule' => $user?->matricule,
+                'user_name' => $userName !== '' ? $userName : null,
+                'ip_address' => $request->ip(),
+                'message' => "Suppression de la table d'import {$tableName} depuis Consultation.",
+                'context' => [
+                    'route' => $request->route()?->getName(),
+                    'method' => $request->method(),
+                ],
+            ]);
+        } catch (\Throwable $e) {
+            $logger->log([
+                'run_id' => $runId,
+                'table_name' => $tableName,
+                'operation' => 'delete_import_table',
+                'status' => 'failed',
+                'user_id' => $user?->id,
+                'user_matricule' => $user?->matricule,
+                'user_name' => $userName !== '' ? $userName : null,
+                'ip_address' => $request->ip(),
+                'message' => "Echec suppression table d'import {$tableName}: " . $e->getMessage(),
+                'context' => [
+                    'route' => $request->route()?->getName(),
+                    'method' => $request->method(),
+                    'exception' => get_class($e),
+                ],
+            ]);
+
+            return redirect()->route('consultation.index')
+                ->withErrors(['table' => "Impossible de supprimer la table '{$tableName}'."]);
+        }
 
         return redirect()->route('consultation.index')->with('success', "La table '$tableName' a été supprimée avec succès.");
     }

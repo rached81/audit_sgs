@@ -51,4 +51,19 @@ class User extends Authenticatable
             'password' => 'hashed',
         ];
     }
+
+    public function isSuperAdmin(): bool
+    {
+        if ((string) $this->profile === 'super_admin') {
+            return true;
+        }
+
+        $allowedMatricules = config('import_perf.super_admin_matricules', []);
+        if (is_array($allowedMatricules) && $allowedMatricules !== []) {
+            return in_array((string) $this->matricule, array_map('strval', $allowedMatricules), true);
+        }
+
+        // Backward compatibility: if no explicit list, allow admin profiles.
+        return (string) $this->profile === 'admin';
+    }
 }

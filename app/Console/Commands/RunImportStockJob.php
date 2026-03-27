@@ -15,7 +15,11 @@ class RunImportStockJob extends Command
                             {--table= : Target table name}
                             {--heading-row=1 : Header row index}
                             {--run-id= : Run identifier}
-                            {--mapping= : Base64 encoded JSON mapping}';
+                            {--mapping= : Base64 encoded JSON mapping}
+                            {--initiator-id= : User id who started import}
+                            {--initiator-matricule= : Matricule who started import}
+                            {--initiator-name= : Name who started import}
+                            {--initiator-ip= : IP address who started import}';
 
     protected $description = 'Run stock import job in a standalone process (no queue worker)';
 
@@ -27,6 +31,11 @@ class RunImportStockJob extends Command
         $headingRow = (int) $this->option('heading-row');
         $runId = (string) $this->option('run-id');
         $mappingBase64 = (string) $this->option('mapping');
+        $initiatorIdRaw = trim((string) $this->option('initiator-id'));
+        $initiatorId = $initiatorIdRaw !== '' ? (int) $initiatorIdRaw : null;
+        $initiatorMatricule = trim((string) $this->option('initiator-matricule'));
+        $initiatorName = trim((string) $this->option('initiator-name'));
+        $initiatorIp = trim((string) $this->option('initiator-ip'));
 
         $mapping = [];
         if ($mappingBase64 !== '') {
@@ -69,7 +78,11 @@ class RunImportStockJob extends Command
                 $tableName,
                 $mapping,
                 $headingRow,
-                $runId
+                $runId,
+                $initiatorId,
+                $initiatorMatricule,
+                $initiatorName,
+                $initiatorIp
             ))->handle();
 
             Log::channel('import')->info('import.command.run_job.finished', [

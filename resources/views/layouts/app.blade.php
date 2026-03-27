@@ -16,7 +16,7 @@
 </head>
 <body class="antialiased bg-gray-50 min-h-screen text-gray-800">
     <nav class="bg-green-700 text-white shadow-lg">
-        <div class="max-w-6xl mx-auto px-4">
+        <div class="max-w-[95rem] mx-auto px-4">
             <div class="flex justify-between">
                 <div class="flex space-x-7">
                     <div>
@@ -31,6 +31,9 @@
                         <a href="{{ route('consultation.index') }}" class="py-4 px-2 {{ request()->routeIs('consultation.*') ? 'border-b-4 border-yellow-400 font-semibold' : 'text-green-100 hover:text-white transition duration-300' }}">Consultation</a>
                         <a href="{{ route('audit.index') }}" class="py-4 px-2 {{ request()->routeIs('audit.*') ? 'border-b-4 border-yellow-400 font-semibold' : 'text-green-100 hover:text-white transition duration-300' }}">Audit</a>
                         <a href="{{ route('archive.index') }}" class="py-4 px-2 {{ request()->routeIs('archive.*') ? 'border-b-4 border-yellow-400 font-semibold' : 'text-green-100 hover:text-white transition duration-300' }}">Archive</a>
+                        @if(Auth::user()->isSuperAdmin())
+                            <a href="{{ route('import.logs.index') }}" class="py-4 px-2 {{ request()->routeIs('import.logs.*') ? 'border-b-4 border-yellow-400 font-semibold' : 'text-green-100 hover:text-white transition duration-300' }}">Logs Import</a>
+                        @endif
                         @if(Auth::user()->profile === 'admin')
                             <a href="{{ route('users.index') }}" class="py-4 px-2 {{ request()->routeIs('users.*') ? 'border-b-4 border-yellow-400 font-semibold' : 'text-green-100 hover:text-white transition duration-300' }}">Utilisateurs</a>
                         @endif
@@ -53,7 +56,7 @@
         </div>
     </nav>
 
-    <div class="max-w-6xl mx-auto py-10 px-4">
+    <div class="max-w-[95rem] mx-auto py-10 px-4">
         @yield('content')
     </div>
 

@@ -5,6 +5,7 @@ use App\Http\Controllers\StockImportController;
 use App\Http\Controllers\StockConsultationController;
 use App\Http\Controllers\StockAuditController;
 use App\Http\Controllers\ImportArchiveController;
+use App\Http\Controllers\ImportOperationLogController;
 use App\Http\Controllers\AuthController;
 use App\Http\Controllers\UserController;
 
@@ -51,6 +52,11 @@ Route::middleware(['auth'])->group(function () {
             'filename' => '.*',
         ])
         ->name('archive.download');
+
+    // Sensitive import operation logs: super admin only.
+    Route::middleware(['super_admin'])->group(function () {
+        Route::get('/import/logs', [ImportOperationLogController::class, 'index'])->name('import.logs.index');
+    });
 
     // User Management
     Route::middleware(['admin'])->group(function () {

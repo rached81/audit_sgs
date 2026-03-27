@@ -25,6 +25,7 @@
         <input type="hidden" name="file_path" value="{{ $file_path }}">
         <input type="hidden" name="table_name" value="{{ $table_name }}">
         <input type="hidden" name="heading_row" value="{{ $heading_row }}">
+        <input type="hidden" name="run_id" value="{{ $run_id ?? '' }}">
 
         <!-- Pass original params implicitly via table naming, or if logic needs them later?
              The controller processMappedImport only needs file and table name usually,
