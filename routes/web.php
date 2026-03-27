@@ -19,9 +19,13 @@ use App\Http\Controllers\UserController;
 Route::get('/login', [AuthController::class, 'showLoginForm'])->name('login');
 Route::post('/login', [AuthController::class, 'login']);
 Route::post('/logout', [AuthController::class, 'logout'])->name('logout');
+Route::middleware(['auth'])->group(function () {
+    Route::get('/password/first-login', [AuthController::class, 'showFirstPasswordForm'])->name('password.first.form');
+    Route::post('/password/first-login', [AuthController::class, 'updateFirstPassword'])->name('password.first.update');
+});
 
 // Protected Routes
-Route::middleware(['auth'])->group(function () {
+Route::middleware(['auth', 'password_changed'])->group(function () {
     Route::get('/', function () {
         return redirect()->route('import.form');
     });
