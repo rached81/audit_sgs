@@ -56,6 +56,7 @@
                 <select class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline" id="profile" name="profile" required>
                     <option value="user" {{ old('profile') == 'user' ? 'selected' : '' }}>Utilisateur Standard</option>
                     <option value="admin" {{ old('profile') == 'admin' ? 'selected' : '' }}>Administrateur</option>
+                    <option value="superadmin" {{ old('profile') == 'superadmin' ? 'selected' : '' }}>Super Admin</option>
                 </select>
             </div>
 
