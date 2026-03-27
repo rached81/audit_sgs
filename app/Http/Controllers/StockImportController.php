@@ -106,7 +106,8 @@ class StockImportController extends Controller
                     $tableName,
                     $bestAnalysis['mapping'],
                     $bestRowIndex,
-                    $path
+                    $path,
+                    $request->ajax() || $request->expectsJson()
                 );
             }
 
@@ -177,10 +178,10 @@ class StockImportController extends Controller
                 ->withErrors(['file' => 'Le fichier temporaire a expire. Veuillez reessayer.']);
         }
 
-        return $this->doImport($fullPath, $tableName, $mapping, $headingRow, $path);
+        return $this->doImport($fullPath, $tableName, $mapping, $headingRow, $path, false);
     }
 
-    private function doImport($fullPath, $tableName, $mapping, $headingRow = 1, $relativePath = null)
+    private function doImport($fullPath, $tableName, $mapping, $headingRow = 1, $relativePath = null, bool $asJson = false)
     {
         @set_time_limit(0);
 
@@ -219,6 +220,12 @@ class StockImportController extends Controller
                 ]);
 
                 if ($existingRows > 0) {
+                    if ($asJson) {
+                        return response()->json([
+                            'ok' => false,
+                            'message' => "Schema incompatible sur $tableName: colonne ARTICLE numerique et table non vide. Videz ou recreez la table avant import.",
+                        ], 422);
+                    }
                     return redirect()->route('import.form')->withErrors([
                         'table_name' => "Schema incompatible sur $tableName: colonne ARTICLE numerique et table non vide. Videz ou recreez la table avant import.",
                     ]);
@@ -236,6 +243,12 @@ class StockImportController extends Controller
                 ]);
 
                 if ($recreateExitCode !== 0) {
+                    if ($asJson) {
+                        return response()->json([
+                            'ok' => false,
+                            'message' => "Impossible de recreer automatiquement la table $tableName avec le bon schema.",
+                        ], 500);
+                    }
                     return redirect()->route('import.form')->withErrors([
                         'table_name' => "Impossible de recreer automatiquement la table $tableName avec le bon schema.",
                     ]);
@@ -277,6 +290,12 @@ class StockImportController extends Controller
                     Cache::put("import_status_{$tableName}", 'failed', 3600);
                     Cache::put("import_done_{$tableName}", false, 3600);
 
+                    if ($asJson) {
+                        return response()->json([
+                            'ok' => false,
+                            'message' => "Echec de la creation de la table $tableName.",
+                        ], 500);
+                    }
                     return redirect()->route('import.form')->withErrors([
                         'table_name' => "Echec de la creation de la table $tableName.",
                     ]);
@@ -307,6 +326,16 @@ class StockImportController extends Controller
                 'table' => $tableName,
             ]);
 
+            if ($asJson) {
+                return response()->json([
+                    'ok' => true,
+                    'table_name' => $tableName,
+                    'run_id' => '',
+                    'status_url' => route('import.status', [], false),
+                    'events_url' => route('import.events', [], false),
+                ]);
+            }
+
             return redirect()->route('import.form')
                 ->with('import_table', $tableName) // backward compatibility for old polling
                 // Keep empty to force legacy polling (no SSE needed).
@@ -318,6 +347,12 @@ class StockImportController extends Controller
                 'exception' => get_class($e),
             ]);
 
+            if ($asJson) {
+                return response()->json([
+                    'ok' => false,
+                    'message' => 'Erreur lors de l\'import : ' . $e->getMessage(),
+                ], 500);
+            }
             return redirect()->route('import.form')->withErrors(['file' => 'Erreur lors de l\'import : ' . $e->getMessage()]);
         }
     }

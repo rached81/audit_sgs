@@ -27,11 +27,54 @@
 
             <p id="infoText" class="text-gray-600 mb-4">Veuillez patienter, ne fermez pas la page.</p>
 
-            <!-- Steps -->
-            <div class="flex items-center justify-between gap-2 text-[11px] font-semibold text-gray-500 mb-4">
-                <div id="stepStarting" class="flex-1 rounded-full px-2 py-1 bg-indigo-50 text-indigo-700">Upload</div>
-                <div id="stepCleaning" class="flex-1 rounded-full px-2 py-1 bg-gray-100">Nettoyage</div>
-                <div id="stepInserting" class="flex-1 rounded-full px-2 py-1 bg-gray-100">Insertion</div>
+            <!-- Steps (vertical) -->
+            <div class="mb-4 text-left">
+                <div class="text-xs font-bold text-gray-500 mb-2">Étapes</div>
+                <div class="space-y-2">
+                    <div id="stepUploadRow" class="flex items-center justify-between gap-3 rounded-lg border border-gray-200 px-3 py-2">
+                        <div class="min-w-0 flex items-center gap-2">
+                            <span id="stepUploadIcon" class="shrink-0 h-5 w-5 rounded-full bg-indigo-100 text-indigo-700 grid place-items-center font-extrabold">•</span>
+                            <div class="min-w-0">
+                                <div class="text-sm font-semibold text-gray-800">Upload</div>
+                                <div id="stepUploadMeta" class="text-xs text-gray-500 truncate">En attente…</div>
+                            </div>
+                        </div>
+                        <div id="stepUploadRight" class="shrink-0 text-xs font-bold text-gray-600">0%</div>
+                    </div>
+
+                    <div id="stepMapRow" class="flex items-center justify-between gap-3 rounded-lg border border-gray-200 px-3 py-2">
+                        <div class="min-w-0 flex items-center gap-2">
+                            <span id="stepMapIcon" class="shrink-0 h-5 w-5 rounded-full bg-gray-100 text-gray-500 grid place-items-center font-extrabold">•</span>
+                            <div class="min-w-0">
+                                <div class="text-sm font-semibold text-gray-800">Mappage entête</div>
+                                <div id="stepMapMeta" class="text-xs text-gray-500 truncate">Analyse des colonnes…</div>
+                            </div>
+                        </div>
+                        <div id="stepMapRight" class="shrink-0 text-xs font-bold text-gray-600">—</div>
+                    </div>
+
+                    <div id="stepCleaningRow" class="flex items-center justify-between gap-3 rounded-lg border border-gray-200 px-3 py-2">
+                        <div class="min-w-0 flex items-center gap-2">
+                            <span id="stepCleaningIcon" class="shrink-0 h-5 w-5 rounded-full bg-gray-100 text-gray-500 grid place-items-center font-extrabold">•</span>
+                            <div class="min-w-0">
+                                <div class="text-sm font-semibold text-gray-800">Nettoyage</div>
+                                <div id="stepCleaningMeta" class="text-xs text-gray-500 truncate">En attente…</div>
+                            </div>
+                        </div>
+                        <div id="stepCleaningRight" class="shrink-0 text-xs font-bold text-gray-600">0%</div>
+                    </div>
+
+                    <div id="stepInsertingRow" class="flex items-center justify-between gap-3 rounded-lg border border-gray-200 px-3 py-2">
+                        <div class="min-w-0 flex items-center gap-2">
+                            <span id="stepInsertingIcon" class="shrink-0 h-5 w-5 rounded-full bg-gray-100 text-gray-500 grid place-items-center font-extrabold">•</span>
+                            <div class="min-w-0">
+                                <div class="text-sm font-semibold text-gray-800">Insertion</div>
+                                <div id="stepInsertingMeta" class="text-xs text-gray-500 truncate">En attente…</div>
+                            </div>
+                        </div>
+                        <div id="stepInsertingRight" class="shrink-0 text-xs font-bold text-gray-600">0%</div>
+                    </div>
+                </div>
             </div>
 
             <div id="timeEstimate" class="text-sm font-semibold text-indigo-600 bg-indigo-50 py-2 px-4 rounded">
@@ -189,22 +232,82 @@
     <script>
         let selectedFileSize = 0;
 
+        function setStepRowState(rowId, iconId, state) {
+            const row = document.getElementById(rowId);
+            const icon = document.getElementById(iconId);
+            if (!row || !icon) return;
+
+            const baseRow = "flex items-center justify-between gap-3 rounded-lg border px-3 py-2";
+            const baseIcon = "shrink-0 h-5 w-5 rounded-full grid place-items-center font-extrabold";
+
+            if (state === 'active') {
+                row.className = baseRow + " border-indigo-200 bg-indigo-50";
+                icon.className = baseIcon + " bg-indigo-100 text-indigo-700";
+                icon.innerText = "…";
+                return;
+            }
+            if (state === 'done') {
+                row.className = baseRow + " border-green-200 bg-green-50";
+                icon.className = baseIcon + " bg-green-100 text-green-700";
+                icon.innerText = "✓";
+                return;
+            }
+            if (state === 'failed') {
+                row.className = baseRow + " border-red-200 bg-red-50";
+                icon.className = baseIcon + " bg-red-100 text-red-700";
+                icon.innerText = "!";
+                return;
+            }
+            // idle
+            row.className = baseRow + " border-gray-200 bg-white";
+            icon.className = baseIcon + " bg-gray-100 text-gray-500";
+            icon.innerText = "•";
+        }
+
         function setSteps(active) {
-            const starting = document.getElementById('stepStarting');
-            const cleaning = document.getElementById('stepCleaning');
-            const inserting = document.getElementById('stepInserting');
-            if (!starting || !cleaning || !inserting) return;
-
-            const makeActive = (el) => el.className = "flex-1 rounded-full px-2 py-1 bg-indigo-50 text-indigo-700";
-            const makeDone = (el) => el.className = "flex-1 rounded-full px-2 py-1 bg-green-50 text-green-700";
-            const makeIdle = (el) => el.className = "flex-1 rounded-full px-2 py-1 bg-gray-100 text-gray-500";
-
-            makeIdle(starting); makeIdle(cleaning); makeIdle(inserting);
-            if (active === 'starting') { makeActive(starting); }
-            if (active === 'cleaning') { makeDone(starting); makeActive(cleaning); }
-            if (active === 'inserting') { makeDone(starting); makeDone(cleaning); makeActive(inserting); }
-            if (active === 'done') { makeDone(starting); makeDone(cleaning); makeDone(inserting); }
-            if (active === 'failed') { makeIdle(starting); makeIdle(cleaning); makeIdle(inserting); makeActive(inserting); }
+            // active: starting|mapping|cleaning|inserting|done|failed
+            if (active === 'starting') {
+                setStepRowState('stepUploadRow', 'stepUploadIcon', 'active');
+                setStepRowState('stepMapRow', 'stepMapIcon', 'idle');
+                setStepRowState('stepCleaningRow', 'stepCleaningIcon', 'idle');
+                setStepRowState('stepInsertingRow', 'stepInsertingIcon', 'idle');
+                return;
+            }
+            if (active === 'mapping') {
+                setStepRowState('stepUploadRow', 'stepUploadIcon', 'done');
+                setStepRowState('stepMapRow', 'stepMapIcon', 'active');
+                setStepRowState('stepCleaningRow', 'stepCleaningIcon', 'idle');
+                setStepRowState('stepInsertingRow', 'stepInsertingIcon', 'idle');
+                return;
+            }
+            if (active === 'cleaning') {
+                setStepRowState('stepUploadRow', 'stepUploadIcon', 'done');
+                setStepRowState('stepMapRow', 'stepMapIcon', 'done');
+                setStepRowState('stepCleaningRow', 'stepCleaningIcon', 'active');
+                setStepRowState('stepInsertingRow', 'stepInsertingIcon', 'idle');
+                return;
+            }
+            if (active === 'inserting') {
+                setStepRowState('stepUploadRow', 'stepUploadIcon', 'done');
+                setStepRowState('stepMapRow', 'stepMapIcon', 'done');
+                setStepRowState('stepCleaningRow', 'stepCleaningIcon', 'done');
+                setStepRowState('stepInsertingRow', 'stepInsertingIcon', 'active');
+                return;
+            }
+            if (active === 'done') {
+                setStepRowState('stepUploadRow', 'stepUploadIcon', 'done');
+                setStepRowState('stepMapRow', 'stepMapIcon', 'done');
+                setStepRowState('stepCleaningRow', 'stepCleaningIcon', 'done');
+                setStepRowState('stepInsertingRow', 'stepInsertingIcon', 'done');
+                return;
+            }
+            if (active === 'failed') {
+                setStepRowState('stepUploadRow', 'stepUploadIcon', 'done');
+                setStepRowState('stepMapRow', 'stepMapIcon', 'done');
+                setStepRowState('stepCleaningRow', 'stepCleaningIcon', 'done');
+                setStepRowState('stepInsertingRow', 'stepInsertingIcon', 'failed');
+                return;
+            }
         }
 
         function showSticky() {
@@ -236,21 +339,360 @@
             }
         }
 
-        document.getElementById('importForm').onsubmit = function() {
-            // Show Loading Overlay
-            showOverlay();
-            document.getElementById('progressBar').style.width = '0%';
-            document.getElementById('progressText').innerText = '0%';
-            document.getElementById('timeEstimate').innerText = "Upload & analyse du fichier...";
-            setSteps('starting');
-        };
+        function formatBytes(bytes) {
+            const b = Number(bytes || 0);
+            if (!Number.isFinite(b) || b <= 0) return '0 B';
+            const units = ['B', 'KB', 'MB', 'GB'];
+            const i = Math.min(units.length - 1, Math.floor(Math.log(b) / Math.log(1024)));
+            const v = b / Math.pow(1024, i);
+            return (v >= 10 || i === 0 ? v.toFixed(0) : v.toFixed(1)) + ' ' + units[i];
+        }
+
+        function formatDuration(seconds) {
+            if (seconds === null || seconds === undefined) return '';
+            const s = Math.max(0, Math.round(seconds));
+            const m = Math.floor(s / 60);
+            const r = s % 60;
+            if (m <= 0) return s + 's';
+            return m + 'm ' + r + 's';
+        }
+
+        let currentUploadTable = '';
+
+        // AJAX upload with real progress (XHR upload.onprogress).
+        const importForm = document.getElementById('importForm');
+        if (importForm) {
+            importForm.addEventListener('submit', function (e) {
+                e.preventDefault();
+
+                const overlay = document.getElementById('loadingOverlay');
+                const progressBar = document.getElementById('progressBar');
+                const progressText = document.getElementById('progressText');
+                const estimateDiv = document.getElementById('timeEstimate');
+                const infoText = document.getElementById('infoText');
+                const spinner = document.getElementById('loadingSpinner');
+
+                showOverlay();
+                setSteps('starting');
+                hideSticky();
+
+                if (spinner) spinner.style.display = '';
+                if (progressBar) progressBar.style.width = '0%';
+                if (progressText) progressText.innerText = '0%';
+                if (infoText) infoText.innerText = 'Veuillez patienter, ne fermez pas la page.';
+                if (estimateDiv) estimateDiv.innerText = 'Upload en cours…';
+                const upMeta = document.getElementById('stepUploadMeta');
+                const upRight = document.getElementById('stepUploadRight');
+                const mapMeta = document.getElementById('stepMapMeta');
+                const mapRight = document.getElementById('stepMapRight');
+                const clMeta = document.getElementById('stepCleaningMeta');
+                const clRight = document.getElementById('stepCleaningRight');
+                const insMeta = document.getElementById('stepInsertingMeta');
+                const insRight = document.getElementById('stepInsertingRight');
+                if (upMeta) upMeta.innerText = 'En attente…';
+                if (upRight) upRight.innerText = '0%';
+                if (mapMeta) mapMeta.innerText = 'Analyse des colonnes…';
+                if (mapRight) mapRight.innerText = '—';
+                if (clMeta) clMeta.innerText = 'En attente…';
+                if (clRight) clRight.innerText = '0%';
+                if (insMeta) insMeta.innerText = 'En attente…';
+                if (insRight) insRight.innerText = '0%';
+
+                const fd = new FormData(importForm);
+                const xhr = new XMLHttpRequest();
+                // Fallback context in case flash session is not available after XHR redirects.
+                const p = String(fd.get('programme') || '').toUpperCase();
+                const r = String(fd.get('reseau') || '').toUpperCase();
+                const y = String(fd.get('annee') || '').trim();
+                if (p && r && y) {
+                    currentUploadTable = ('res_' + p + '_' + r + '_' + y).toLowerCase();
+                    sessionStorage.setItem('pendingImportTable', currentUploadTable);
+                }
+                sessionStorage.setItem('pendingImportAt', String(Date.now()));
+
+                const startAt = Date.now();
+                let lastAt = startAt;
+                let lastLoaded = 0;
+
+                xhr.open('POST', importForm.action, true);
+                xhr.setRequestHeader('X-Requested-With', 'XMLHttpRequest');
+
+                xhr.upload.onprogress = function (ev) {
+                    if (!ev.lengthComputable) return;
+                    const pc = Math.max(0, Math.min(100, Math.round((ev.loaded / ev.total) * 100)));
+
+                    if (progressBar) progressBar.style.width = pc + '%';
+                    if (progressText) progressText.innerText = pc + '%';
+
+                    const now = Date.now();
+                    const dt = Math.max(1, now - lastAt) / 1000;
+                    const dBytes = Math.max(0, ev.loaded - lastLoaded);
+                    const speed = dBytes / dt; // bytes/s
+                    const remaining = Math.max(0, ev.total - ev.loaded);
+                    const eta = speed > 0 ? (remaining / speed) : null;
+
+                    lastAt = now;
+                    lastLoaded = ev.loaded;
+
+                    const etaTxt = eta === null ? '' : (' • ETA ~ ' + formatDuration(eta));
+                    const speedTxt = speed > 0 ? (' • ' + formatBytes(speed) + '/s') : '';
+                    if (estimateDiv) {
+                        estimateDiv.innerText =
+                            'Upload (' + pc + '%) • ' + formatBytes(ev.loaded) + ' / ' + formatBytes(ev.total) + speedTxt + etaTxt;
+                    }
+                    if (upMeta) upMeta.innerText = 'Upload (' + pc + '%)' + (eta === null ? '' : (' • ETA ~ ' + formatDuration(eta)));
+                    if (upRight) upRight.innerText = pc + '%';
+
+                    // Upload done, now backend is still validating headers before response.
+                    if (pc >= 100) {
+                        setSteps('mapping');
+                        if (estimateDiv) estimateDiv.innerText = "Upload terminé • Analyse entête côté serveur…";
+                        if (mapMeta) mapMeta.innerText = "Analyse des colonnes en cours…";
+                        if (mapRight) mapRight.innerText = "…";
+                    }
+
+                    const stickyBar = document.getElementById('stickyBar');
+                    const stickyText = document.getElementById('stickyText');
+                    if (stickyBar) stickyBar.style.width = pc + '%';
+                    if (stickyText) stickyText.innerText = 'Upload… ' + pc + '%';
+                };
+
+                xhr.onload = function () {
+                    // After upload finishes, backend may have redirected (mapping page or back to import).
+                    // We navigate to the final URL so normal polling logic resumes.
+                    if (xhr.status === 401) {
+                        window.location.href = '/login';
+                        return;
+                    }
+
+                    if (xhr.status >= 200 && xhr.status < 400) {
+                        if (estimateDiv) estimateDiv.innerText = 'Upload terminé. Préparation…';
+                        if (upMeta) upMeta.innerText = 'Terminé';
+                        if (upRight) upRight.innerText = '100%';
+                        setSteps('mapping');
+
+                        const ct = (xhr.getResponseHeader('Content-Type') || '').toLowerCase();
+                        const isJson = ct.includes('application/json');
+                        if (isJson) {
+                            let payload = null;
+                            try {
+                                payload = JSON.parse(xhr.responseText || '{}');
+                            } catch (e) {
+                                payload = null;
+                            }
+
+                            if (!payload || payload.ok === false) {
+                                if (spinner) spinner.style.display = 'none';
+                                setSteps('failed');
+                                const msg = payload?.message || 'Réponse invalide du serveur pendant le démarrage de l\'import.';
+                                if (estimateDiv) estimateDiv.innerHTML = "<span class='text-red-600 font-bold'>" + msg + "</span>";
+                                showSticky();
+                                return;
+                            }
+
+                            const trackedTable = String(payload.table_name || currentUploadTable || sessionStorage.getItem('pendingImportTable') || '');
+                            if (trackedTable && typeof startPollingTracking === 'function') {
+                                sessionStorage.setItem('pendingImportTable', trackedTable);
+                                sessionStorage.setItem('pendingImportAt', String(Date.now()));
+                                startPollingTracking(trackedTable);
+                                return;
+                            }
+                        }
+
+                        const html = typeof xhr.responseText === 'string' ? xhr.responseText : '';
+                        const looksLikeHtml = ct.includes('text/html') && html.trim().startsWith('<');
+                        const looksLikeMapping = looksLikeHtml && (
+                            html.includes('name="mapping[') ||
+                            html.includes("name='mapping[") ||
+                            html.toLowerCase().includes('import_mapping')
+                        );
+
+                        // If manual mapping is required, render that page.
+                        if (looksLikeMapping) {
+                            document.open();
+                            document.write(html);
+                            document.close();
+                            return;
+                        }
+
+                        // Standard flow: keep this page and start polling immediately (avoid modal closing flicker).
+                        const tableName = currentUploadTable || sessionStorage.getItem('pendingImportTable') || '';
+                        if (tableName && typeof startPollingTracking === 'function') {
+                            // Keep state durable in case browser/page does an unexpected refresh.
+                            sessionStorage.setItem('pendingImportTable', tableName);
+                            sessionStorage.setItem('pendingImportAt', String(Date.now()));
+                            startPollingTracking(tableName);
+                            return;
+                        }
+
+                        // Keep modal visible with explicit message if table could not be resolved.
+                        if (estimateDiv) estimateDiv.innerHTML = "<span class='text-red-600 font-bold'>Impossible de démarrer le suivi (table introuvable).</span>";
+                        setSteps('failed');
+                        return;
+                    }
+
+                    // Error
+                    if (spinner) spinner.style.display = 'none';
+                    setSteps('failed');
+                    const msg = 'Erreur upload (HTTP ' + xhr.status + ').';
+                    if (estimateDiv) estimateDiv.innerHTML = "<span class='text-red-600 font-bold'>" + msg + "</span>";
+                    showSticky();
+                };
+
+                xhr.onerror = function () {
+                    if (spinner) spinner.style.display = 'none';
+                    setSteps('failed');
+                    if (estimateDiv) estimateDiv.innerHTML = "<span class='text-red-600 font-bold'>Erreur réseau pendant l'upload.</span>";
+                    showSticky();
+                };
+
+                xhr.send(fd);
+            });
+        }
 
         const cfg = document.getElementById('importProgressConfig');
-        const importRunId = cfg?.dataset?.runId || '';
-        const importTable = cfg?.dataset?.table || '';
+        const importRunIdFromSession = cfg?.dataset?.runId || '';
+        const importTableFromSession = cfg?.dataset?.table || '';
+        // Robust fallback for XHR upload -> redirect chain where flash may be consumed.
+        const importRunId = importRunIdFromSession || (sessionStorage.getItem('pendingImportRunId') || '');
+        const importTable = importTableFromSession || (sessionStorage.getItem('pendingImportTable') || '');
         const routeEvents = cfg?.dataset?.eventsUrl || '';
         const routeStatus = cfg?.dataset?.statusUrl || '';
         const routeConsultation = cfg?.dataset?.consultationUrl || '';
+
+        function clearPendingImport() {
+            sessionStorage.removeItem('pendingImportTable');
+            sessionStorage.removeItem('pendingImportRunId');
+            sessionStorage.removeItem('pendingImportAt');
+        }
+
+        function isPendingImportRecent(maxAgeMs = 10 * 60 * 1000) {
+            const startedAt = Number(sessionStorage.getItem('pendingImportAt') || 0);
+            if (!Number.isFinite(startedAt) || startedAt <= 0) return false;
+            return (Date.now() - startedAt) <= maxAgeMs;
+        }
+
+        // Allow starting polling from upload handler without reloading.
+        let activePollInterval = null;
+        function startPollingTracking(tableName) {
+            if (!tableName || !routeStatus) return;
+            if (activePollInterval) {
+                clearInterval(activePollInterval);
+                activePollInterval = null;
+            }
+
+            const statusUrl = routeStatus + "?table=" + encodeURIComponent(tableName);
+            const estimateDiv = document.getElementById('timeEstimate');
+            const progressBar = document.getElementById('progressBar');
+            const progressText = document.getElementById('progressText');
+            const spinner = document.getElementById('loadingSpinner');
+
+            showOverlay();
+            setSteps('mapping');
+
+            let isFinished = false;
+            let consecutiveFailures = 0;
+            const maxFailuresBeforeWarning = 3;
+
+            activePollInterval = setInterval(function() {
+                if (isFinished) return;
+
+                fetch(statusUrl, { headers: { 'Accept': 'application/json' } })
+                    .then(response => {
+                        if (response.status === 401) {
+                            window.location.href = '/login';
+                            return;
+                        }
+                        if (!response.ok) {
+                            throw new Error('Network response was not ok');
+                        }
+                        return response.text().then((txt) => {
+                            try {
+                                return JSON.parse(txt);
+                            } catch (e) {
+                                const err = new Error('Non-JSON response from status endpoint');
+                                err.raw = txt?.slice?.(0, 2000);
+                                throw err;
+                            }
+                        });
+                    })
+                    .then(data => {
+                        consecutiveFailures = 0;
+                        // Prefer backend stage-aware progress when available.
+                        let pc = Number.isFinite(data.overall_percent) ? data.overall_percent : (data.percent || 0);
+                        let count = data.count || 0;
+                        let total = data.total || '?';
+                        let status = data.status || 'running';
+                        let error = data.error || null;
+                        let stage = data.stage || '';
+                        let eta = data.eta_seconds ?? null;
+                        let stagePc = data.stage_percent ?? null;
+
+                        const etaTxt = eta === null ? '' : (" • ETA ~ " + eta + "s");
+                        if (stage === 'cleaning') {
+                            setSteps('cleaning');
+                            const sp = stagePc === null ? '' : (" (" + stagePc + "%)");
+                            if (estimateDiv) estimateDiv.innerText = "Nettoyage" + sp + " • Lignes prêtes: " + count + etaTxt;
+                            const clMeta = document.getElementById('stepCleaningMeta');
+                            const clRight = document.getElementById('stepCleaningRight');
+                            if (clMeta) clMeta.innerText = "Lignes prêtes: " + count + etaTxt;
+                            if (clRight) clRight.innerText = (stagePc === null ? '—' : (stagePc + '%'));
+                        } else if (stage === 'inserting' || stage === 'done') {
+                            setSteps('inserting');
+                            if (estimateDiv) estimateDiv.innerText = "Insertion • Lignes: " + count + " / " + total + etaTxt;
+                            const insMeta = document.getElementById('stepInsertingMeta');
+                            const insRight = document.getElementById('stepInsertingRight');
+                            if (insMeta) insMeta.innerText = count + " / " + total + etaTxt;
+                            if (insRight) insRight.innerText = '—';
+                        } else {
+                            setSteps('mapping');
+                            if (estimateDiv) estimateDiv.innerText = "Mappage entête..." + etaTxt;
+                        }
+
+                        const stickyBar = document.getElementById('stickyBar');
+                        const stickyText = document.getElementById('stickyText');
+                        if (stickyBar) stickyBar.style.width = pc + '%';
+                        if (stickyText) stickyText.innerText = "Import… " + count + " / " + total + " (" + pc + "%)";
+
+                        if (progressBar) progressBar.style.width = pc + '%';
+                        if (progressText) progressText.innerText = pc + '%';
+
+                        if (error || status === 'failed') {
+                             isFinished = true;
+                             clearPendingImport();
+                             if (spinner) spinner.style.display = 'none';
+                             setSteps('failed');
+                             if (estimateDiv) estimateDiv.innerHTML = "<span class='text-red-600 font-bold'>Import echoue : " + (error ?? "Erreur inconnue") + "</span>";
+                             clearInterval(activePollInterval);
+                             activePollInterval = null;
+                             return;
+                        }
+
+                        if (status === 'done') {
+                             isFinished = true;
+                             clearPendingImport();
+                             if (estimateDiv) estimateDiv.innerHTML = "<span class='text-green-600 font-bold text-lg'>Importation terminee avec succes !</span>";
+                             const infoText = document.getElementById('infoText');
+                             if (infoText) infoText.innerText = "";
+                             if (spinner) spinner.style.display = 'none';
+                             setSteps('done');
+                             hideSticky();
+                             clearInterval(activePollInterval);
+                             activePollInterval = null;
+                        }
+                    })
+                    .catch(err => {
+                        console.error(err);
+                        consecutiveFailures++;
+                        if (consecutiveFailures >= maxFailuresBeforeWarning && estimateDiv) {
+                            estimateDiv.innerHTML =
+                                "<span class='text-red-600 font-bold'>Suivi temporairement indisponible (" + consecutiveFailures + ").</span><br>" +
+                                "<span class='text-gray-600 text-sm'>On reessaie automatiquement... Vous pouvez reduire l'overlay.</span>";
+                        }
+                        showSticky();
+                    });
+            }, 2000);
+        }
 
         // Check if we need to follow progress after redirect
         if (importRunId && routeEvents) {
@@ -298,15 +740,23 @@
                 if (stage === 'cleaning') stageLabel = 'Nettoyage';
                 if (stage === 'inserting') stageLabel = 'Insertion';
                 if (stage === 'starting') stageLabel = 'Upload';
-                if (stage === 'starting') setSteps('starting');
+                if (stage === 'starting') setSteps('mapping');
                 if (stage === 'cleaning') setSteps('cleaning');
                 if (stage === 'inserting') setSteps('inserting');
 
                 const etaTxt = eta === null ? '' : (" • ETA ~ " + eta + "s");
                 if (stage === 'inserting') {
                     estimateDiv.innerText = stageLabel + " (" + stagePc + "%)" + " • Lignes: " + processed + " / " + total + etaTxt;
+                    const insMeta = document.getElementById('stepInsertingMeta');
+                    const insRight = document.getElementById('stepInsertingRight');
+                    if (insMeta) insMeta.innerText = processed + " / " + total + etaTxt;
+                    if (insRight) insRight.innerText = stagePc + '%';
                 } else if (stage === 'cleaning') {
                     estimateDiv.innerText = stageLabel + " (" + stagePc + "%)" + " • Lignes prêtes: " + processed + etaTxt;
+                    const clMeta = document.getElementById('stepCleaningMeta');
+                    const clRight = document.getElementById('stepCleaningRight');
+                    if (clMeta) clMeta.innerText = "Lignes prêtes: " + processed + etaTxt;
+                    if (clRight) clRight.innerText = stagePc + '%';
                 } else {
                     estimateDiv.innerText = stageLabel + "..." + etaTxt;
                 }
@@ -322,6 +772,7 @@
 
                 if (status === 'done') {
                     isFinished = true;
+                    clearPendingImport();
                     estimateDiv.innerHTML = "<span class='text-green-600 font-bold text-lg'>Importation terminee avec succes !</span>";
                     document.getElementById('infoText').innerText = "";
                     spinner.style.display = 'none';
@@ -351,130 +802,39 @@
             };
         } else if (importTable && routeStatus) {
             // Fallback legacy polling (table-based)
-            const statusUrl = routeStatus + "?table=" + encodeURIComponent(importTable);
-            const estimateDiv = document.getElementById('timeEstimate');
-            const overlay = document.getElementById('loadingOverlay');
-            const progressBar = document.getElementById('progressBar');
-            const progressText = document.getElementById('progressText');
-            const spinner = document.getElementById('loadingSpinner');
-
-            showOverlay();
-            setSteps('starting');
-
-            let isFinished = false;
-            let consecutiveFailures = 0;
-            const maxFailuresBeforeWarning = 3;
-
-            let pollInterval = setInterval(function() {
-                if (isFinished) return;
-
-                fetch(statusUrl, { headers: { 'Accept': 'application/json' } })
-                    .then(response => {
-                        if (response.status === 401) {
-                            window.location.href = '/login';
+            startPollingTracking(importTable);
+        } else if (routeStatus) {
+            // If we only have a pending table from sessionStorage, validate status first.
+            const pendingTable = sessionStorage.getItem('pendingImportTable') || '';
+            if (pendingTable) {
+                const checkUrl = routeStatus + "?table=" + encodeURIComponent(pendingTable);
+                fetch(checkUrl, { headers: { 'Accept': 'application/json' } })
+                    .then(r => r.ok ? r.json() : null)
+                    .then(data => {
+                        if (!data) return;
+                        const st = data.status || 'idle';
+                        if (st === 'done') {
+                            clearPendingImport();
                             return;
                         }
-                        if (!response.ok) {
-                            throw new Error('Network response was not ok');
-                        }
-                        // If backend returns HTML (redirect/login/error page), JSON parsing will fail.
-                        return response.text().then((txt) => {
-                            try {
-                                return JSON.parse(txt);
-                            } catch (e) {
-                                const err = new Error('Non-JSON response from status endpoint');
-                                err.raw = txt?.slice?.(0, 2000);
-                                throw err;
+                        if (st === 'idle') {
+                            // Avoid dropping progress too early: cache may not be populated yet.
+                            if (isPendingImportRecent()) {
+                                startPollingTracking(pendingTable);
+                                return;
                             }
-                        });
+                            clearPendingImport();
+                            return;
+                        }
+                        startPollingTracking(pendingTable);
                     })
-                    .then(data => {
-                        consecutiveFailures = 0;
-                        // Prefer backend stage-aware progress when available.
-                        let pc = Number.isFinite(data.overall_percent) ? data.overall_percent : (data.percent || 0);
-                        let count = data.count || 0;
-                        let total = data.total || '?';
-                        let status = data.status || 'running';
-                        let error = data.error || null;
-                        let stage = data.stage || '';
-                        let eta = data.eta_seconds ?? null;
-                        let stagePc = data.stage_percent ?? null;
-
-                        const etaTxt = eta === null ? '' : (" • ETA ~ " + eta + "s");
-                        if (stage === 'cleaning') {
-                            setSteps('cleaning');
-                            const sp = stagePc === null ? '' : (" (" + stagePc + "%)");
-                            estimateDiv.innerText = "Nettoyage" + sp + " • Lignes prêtes: " + count + etaTxt;
-                        } else if (stage === 'inserting' || stage === 'done') {
-                            setSteps('inserting');
-                            estimateDiv.innerText = "Insertion • Lignes: " + count + " / " + total + etaTxt;
-                        } else {
-                            setSteps('starting');
-                            estimateDiv.innerText = "Initialisation..." + etaTxt;
+                    .catch(() => {
+                        // Silent fallback: do not force modal if we cannot validate pending state.
+                        if (isPendingImportRecent()) {
+                            startPollingTracking(pendingTable);
                         }
-                        const stickyBar = document.getElementById('stickyBar');
-                        const stickyText = document.getElementById('stickyText');
-                        if (stickyBar) stickyBar.style.width = pc + '%';
-                        if (stickyText) {
-                            if (stage === 'cleaning') {
-                                const sp = stagePc === null ? '' : (" (" + stagePc + "%)");
-                                stickyText.innerText = "Nettoyage" + sp + " • Lignes prêtes: " + count;
-                            } else if (stage === 'inserting' || stage === 'done') {
-                                stickyText.innerText = "Insertion • " + count + " / " + total + " (" + pc + "%)";
-                            } else {
-                                stickyText.innerText = "Initialisation… (" + pc + "%)";
-                            }
-                        }
-
-                        progressBar.style.width = pc + '%';
-                        progressText.innerText = pc + '%';
-
-                        if (error || status === 'failed') {
-                             isFinished = true;
-                             spinner.style.display = 'none';
-                             setSteps('failed');
-                             estimateDiv.innerHTML = "<span class='text-red-600 font-bold'>Import echoue : " + (error ?? "Erreur inconnue") + "</span>";
-                             clearInterval(pollInterval);
-                             return;
-                        }
-
-                        if (status === 'done') {
-                             isFinished = true;
-                             estimateDiv.innerHTML = "<span class='text-green-600 font-bold text-lg'>Importation terminee avec succes !</span>";
-                             document.getElementById('infoText').innerText = "";
-                             spinner.style.display = 'none';
-                             setSteps('done');
-                             hideSticky();
-
-                             if (!document.getElementById('finishBtn')) {
-                                 const btn = document.createElement('a');
-                                 btn.id = 'finishBtn';
-                                 btn.href = routeConsultation;
-                                 btn.innerText = "Consulter les donnees";
-                                 btn.className = "mt-6 inline-block w-full bg-green-600 hover:bg-green-700 text-white font-bold py-3 px-4 rounded shadow transition-colors";
-                                 document.querySelector('#loadingOverlay > div').appendChild(btn);
-                             }
-
-                             const closeBtn = document.getElementById('closeOverlayBtn');
-                             if(closeBtn) closeBtn.remove();
-
-                             clearInterval(pollInterval);
-                        }
-                    })
-                    .catch(err => {
-                        console.error(err);
-                        consecutiveFailures++;
-                        // In synchronous mode (especially with single-threaded dev server),
-                        // /import/status can temporarily fail while the import is running.
-                        // Keep retrying instead of showing a hard error immediately.
-                        if (consecutiveFailures >= maxFailuresBeforeWarning) {
-                            estimateDiv.innerHTML =
-                                "<span class='text-red-600 font-bold'>Suivi temporairement indisponible (" + consecutiveFailures + ").</span><br>" +
-                                "<span class='text-gray-600 text-sm'>On reessaie automatiquement... Vous pouvez reduire l'overlay.</span>";
-                        }
-                        showSticky();
                     });
-            }, 2000);
+            }
         }
 
         // Background/details UX wiring
