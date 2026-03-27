@@ -28,7 +28,7 @@ class CreateStockTable extends Command
      */
     public function handle()
     {
-        $tableName = strtolower($this->argument('table'));
+        $tableName = strtoupper((string) $this->argument('table'));
         $force = $this->option('force');
 
         if ($force) {

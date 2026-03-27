@@ -35,8 +35,14 @@
                     <td class="px-6 py-4 whitespace-nowrap text-gray-900 font-semibold">{{ $user->nom }} {{ $user->prenom }}</td>
                     <td class="px-6 py-4 whitespace-nowrap text-gray-600">{{ $user->unite }}</td>
                     <td class="px-6 py-4 whitespace-nowrap">
-                        <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full {{ $user->profile === 'admin' ? 'bg-purple-100 text-purple-800' : 'bg-gray-100 text-gray-800' }}">
-                            {{ $user->profile === 'admin' ? 'Administrateur' : 'Utilisateur' }}
+                        @php
+                            $label = $user->profile === 'superadmin' ? 'Super Admin' : ($user->profile === 'admin' ? 'Administrateur' : 'Utilisateur');
+                            $cls = $user->profile === 'superadmin'
+                                ? 'bg-red-100 text-red-800'
+                                : ($user->profile === 'admin' ? 'bg-purple-100 text-purple-800' : 'bg-gray-100 text-gray-800');
+                        @endphp
+                        <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full {{ $cls }}">
+                            {{ $label }}
                         </span>
                     </td>
                     <td class="px-6 py-4 whitespace-nowrap text-gray-600">{{ $user->email }}</td>

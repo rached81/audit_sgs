@@ -6,6 +6,7 @@ use App\Services\ImportOperationLogger;
 use Illuminate\Support\Facades\DB;
 use App\Models\User;
 use Illuminate\Http\Request;
+use Illuminate\Validation\Rule;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Schema;
 
@@ -33,10 +34,10 @@ class UserController extends Controller
             'nom' => 'required|string|max:255',
             'prenom' => 'required|string|max:255',
             'unite' => 'nullable|string|max:255',
-            'matricule' => 'required|string|max:255|unique:users',
-            'email' => 'required|string|email|max:255|unique:users',
-            'username' => 'required|string|max:255|unique:users',
-            'profile' => 'required|string|in:user,admin',
+            'matricule' => ['required', 'string', 'max:255', Rule::unique('users', 'matricule')->whereNull('deleted_at')],
+            'email' => ['required', 'string', 'email', 'max:255', Rule::unique('users', 'email')->whereNull('deleted_at')],
+            'username' => ['required', 'string', 'max:255', Rule::unique('users', 'username')->whereNull('deleted_at')],
+            'profile' => 'required|string|in:user,admin,superadmin',
             'password' => 'required|string|min:8|confirmed',
         ]);
 
@@ -83,10 +84,10 @@ class UserController extends Controller
             'nom' => 'required|string|max:255',
             'prenom' => 'required|string|max:255',
             'unite' => 'nullable|string|max:255',
-            'matricule' => 'required|string|max:255|unique:users,matricule,' . $user->id,
-            'email' => 'required|string|email|max:255|unique:users,email,' . $user->id,
-            'username' => 'required|string|max:255|unique:users,username,' . $user->id,
-            'profile' => 'required|string|in:user,admin',
+            'matricule' => ['required', 'string', 'max:255', Rule::unique('users', 'matricule')->whereNull('deleted_at')->ignore($user->id)],
+            'email' => ['required', 'string', 'email', 'max:255', Rule::unique('users', 'email')->whereNull('deleted_at')->ignore($user->id)],
+            'username' => ['required', 'string', 'max:255', Rule::unique('users', 'username')->whereNull('deleted_at')->ignore($user->id)],
+            'profile' => 'required|string|in:user,admin,superadmin',
             'password' => 'nullable|string|min:8|confirmed',
         ]);
 

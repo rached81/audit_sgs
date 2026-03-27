@@ -45,8 +45,13 @@
                                                     <span class="block text-sm font-bold text-gray-800">{{ number_format($table['count'], 0, ',', ' ') }}</span>
                                                     <span class="text-xs text-gray-400">lignes</span>
                                                 </div>
-                                                @if(Auth::user()->profile === 'admin')
-                                                <form action="{{ route('consultation.destroy', $table['name']) }}" method="POST" onsubmit="return confirm('Êtes-vous sûr de vouloir supprimer la table {{ $table['name'] }} ? Cette action est irréversible.');">
+                                                @if(in_array(Auth::user()->profile, ['admin', 'superadmin']))
+                                                <form
+                                                    action="{{ route('consultation.destroy', $table['name']) }}"
+                                                    method="POST"
+                                                    data-confirm="Êtes-vous sûr de vouloir supprimer la table {{ $table['name'] }} ? Cette action est irréversible."
+                                                    onsubmit="return confirm(this.dataset.confirm);"
+                                                >
                                                     @csrf
                                                     @method('DELETE')
                                                     <button type="submit" class="text-red-400 hover:text-red-600 p-1" title="Supprimer la table">

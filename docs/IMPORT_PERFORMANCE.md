@@ -15,8 +15,8 @@
 - `import.finalize.done`
 
 ## Variables de configuration
-- `IMPORT_QUEUE_NAME=imports`
-- `IMPORT_CHUNK_SIZE=2000`
+- `IMPORT_NORMALIZE_CHUNK_SIZE=20000`
+- `IMPORT_SQL_BATCH_SIZE=5000`
 - `IMPORT_ENABLE_CHUNK_LOGS=true`
 - `LOG_IMPORT_LEVEL=info`
 - `LOG_IMPORT_DAYS=14`
@@ -34,18 +34,18 @@ Observer surtout dans `import.chunk.processed`:
 Si `insert_duration_ms` augmente fortement au fil des chunks:
 - probable cout SQL/index/fichiers DB en croissance.
 
-## Workers: est-ce que ca accelere?
-Oui:
-- L'architecture actuelle est maintenant **parallelisee par chunks**.
-- Plus de workers sur la queue `imports` accelere un **seul gros fichier** (jusqu'a saturation DB/IO).
-
-Commande exemple (Windows) pour 4 workers:
-- Ouvrir 4 terminaux et lancer:
-- `php artisan queue:work --queue=imports --tries=1 --timeout=3600 --sleep=1`
+## Workers: sont-ils necessaires?
+Non pour le flux d'import actuel:
+- L'import est execute via un processus PHP detache (`stock:run-import-job`).
+- Aucun worker queue n'est requis pour traiter un import.
+- Les gains de performance se jouent surtout sur:
+  - taille de lot SQL (`IMPORT_SQL_BATCH_SIZE`)
+  - taille de normalisation (`IMPORT_NORMALIZE_CHUNK_SIZE`)
+  - IO DB + indexes + ressources serveur
 
 ## Recommandations pratiques
-1. Utiliser Redis comme backend queue/cache pour de gros volumes (plus rapide que database queue/cache).
-2. Tester `IMPORT_CHUNK_SIZE` entre `2000` et `5000` selon RAM/DB.
+1. Utiliser Redis comme backend cache pour de gros volumes.
+2. Tester `IMPORT_SQL_BATCH_SIZE` entre `2000` et `8000` selon RAM/DB.
 3. Verifier les indexes de la table cible (indexes utiles oui, surplus ralentit l'insertion).
 4. Garder `IMPORT_ENABLE_CHUNK_LOGS=true` pour diagnostic, puis le passer a `false` en production stable.
-5. Dimensionner le nombre de workers `imports` selon CPU/IO MySQL (commencer a 4, puis tester 6/8).
+5. Monitorer CPU/RAM/IO MySQL pendant les imports lourds et ajuster les tailles de batch.

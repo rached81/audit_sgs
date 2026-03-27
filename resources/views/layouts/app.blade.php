@@ -34,7 +34,7 @@
                         @if(Auth::user()->isSuperAdmin())
                             <a href="{{ route('import.logs.index') }}" class="py-4 px-2 {{ request()->routeIs('import.logs.*') ? 'border-b-4 border-yellow-400 font-semibold' : 'text-green-100 hover:text-white transition duration-300' }}">Logs Import</a>
                         @endif
-                        @if(Auth::user()->profile === 'admin')
+                        @if(in_array(Auth::user()->profile, ['admin', 'superadmin']))
                             <a href="{{ route('users.index') }}" class="py-4 px-2 {{ request()->routeIs('users.*') ? 'border-b-4 border-yellow-400 font-semibold' : 'text-green-100 hover:text-white transition duration-300' }}">Utilisateurs</a>
                         @endif
                     </div>

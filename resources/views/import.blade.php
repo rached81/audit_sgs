@@ -405,7 +405,7 @@
                 const r = String(fd.get('reseau') || '').toUpperCase();
                 const y = String(fd.get('annee') || '').trim();
                 if (p && r && y) {
-                    currentUploadTable = ('res_' + p + '_' + r + '_' + y).toLowerCase();
+                    currentUploadTable = ('RES_' + p + '_' + r + '_' + y);
                     sessionStorage.setItem('pendingImportTable', currentUploadTable);
                 }
                 sessionStorage.setItem('pendingImportAt', String(Date.now()));

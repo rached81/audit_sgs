@@ -15,7 +15,7 @@ class EnsureUserIsAdmin
      */
     public function handle(Request $request, Closure $next): Response
     {
-        if ($request->user() && $request->user()->profile !== 'admin') {
+        if ($request->user() && !in_array((string) $request->user()->profile, ['admin', 'superadmin'], true)) {
             abort(403, 'Accès réservé aux administrateurs.');
         }
 

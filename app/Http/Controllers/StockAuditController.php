@@ -31,8 +31,8 @@ class StockAuditController extends Controller
         $reseau = strtoupper($request->input('reseau'));
         $type = $request->input('type', 'valeur');
 
-        $efTable = strtolower("RES_EF_{$reseau}_{$annee}");
-        $gdTable = strtolower("RES_GD_{$reseau}_{$annee}");
+        $efTable = "RES_EF_{$reseau}_{$annee}";
+        $gdTable = "RES_GD_{$reseau}_{$annee}";
 
         if (!Schema::hasTable($efTable)) {
             return back()->withErrors(['tables' => "La table EF '$efTable' est introuvable."]);
@@ -135,8 +135,8 @@ class StockAuditController extends Controller
         $reseau = strtoupper($request->input('reseau'));
         $type = $request->input('type', 'valeur');
 
-        $efTable = strtolower("RES_EF_{$reseau}_{$annee}");
-        $gdTable = strtolower("RES_GD_{$reseau}_{$annee}");
+        $efTable = "RES_EF_{$reseau}_{$annee}";
+        $gdTable = "RES_GD_{$reseau}_{$annee}";
 
         if (!Schema::hasTable($efTable) || !Schema::hasTable($gdTable)) {
              return back()->withErrors(['tables' => "Tables introuvables pour l'export."]);
@@ -158,7 +158,7 @@ class StockAuditController extends Controller
             // Default: Valeur
             // Ecart = EF_VALEUR - GD_SUM_VALEUR
             $ecartExpr = "COALESCE(ef.VALEUR,0) - COALESCE(gd.gd_valeur,0)";
-            $whereClause = "(ABS($ecartExpr) > 0.005 OR ABS(COALESCE(ef.FINALE, 0) - COALESCE(gd.gd_finale, 0)) > 0)";
+            $whereClause = "(ABS($ecartExpr) > 0.005 OR ABS(COALESCE(ef.FINALE, 0) - COALESCE(gd.gd_finale, 0)) > 0.001)";
         }
 
         // Construct Dynamic Query to fetch ALL columns (Mirrors compare method)

@@ -4,18 +4,14 @@ namespace App\Jobs;
 
 use App\Services\ImportOperationLogger;
 use App\Services\StockCsvImporter;
-use Illuminate\Bus\Queueable;
-use Illuminate\Contracts\Queue\ShouldQueue;
-use Illuminate\Foundation\Bus\Dispatchable;
-use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 
-class ImportStockJob implements ShouldQueue
+class ImportStockJob
 {
-    use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
+    use SerializesModels;
 
     public $fullPath;
     public $relativePath;

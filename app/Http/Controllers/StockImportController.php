@@ -49,7 +49,7 @@ class StockImportController extends Controller
         $annee = $request->input('annee');
         $programme = strtoupper($request->input('programme'));
         $reseau = strtoupper($request->input('reseau'));
-        $tableName = strtolower("RES_{$programme}_{$reseau}_{$annee}");
+        $tableName = "RES_{$programme}_{$reseau}_{$annee}";
 
         if (Schema::hasTable($tableName) && DB::table($tableName)->count() > 0) {
             Log::channel('import')->warning('import.controller.table.already_filled', [

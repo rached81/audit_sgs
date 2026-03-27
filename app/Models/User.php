@@ -57,7 +57,7 @@ class User extends Authenticatable
 
     public function isSuperAdmin(): bool
     {
-        if ((string) $this->profile === 'super_admin') {
+        if (in_array((string) $this->profile, ['superadmin', 'super_admin'], true)) {
             return true;
         }
 

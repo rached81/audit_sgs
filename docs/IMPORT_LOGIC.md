@@ -30,38 +30,27 @@
 ## 5) Lancement du traitement asynchrone
 1. Le controleur appelle `doImport(...)`.
 2. Si la table n'existe pas, creation via la commande artisan `stock:create-table`.
-3. Dispatch du job queue `ImportStockJob`.
+3. L'import est lance dans un **processus PHP detache** via la commande `stock:run-import-job` (pas de worker queue requis).
 4. Redirection vers le formulaire avec la table a suivre (`import_table`).
 
 ## 6) Traitement dans `ImportStockJob`
-1. Estimation du nombre total de lignes du fichier (hors ligne d'entete).
+1. Normalisation du fichier source vers un CSV temporaire (`StockCsvImporter::normalizeToCsv`).
 2. Ecriture des metriques de progression dans le cache:
 - `import_total_[TABLE]`
 - reset de `import_processed_[TABLE]`
-3. Execution de `Excel::import(new StockImport(...))`.
-4. Nettoyage du fichier temporaire si import termine.
-5. En cas d'echec: enregistrement `import_error_[TABLE]` puis exception relancee.
+- `import_status_[TABLE]`, `import_table_state_[TABLE]`
+3. Insertion SQL depuis le CSV normalise (`StockCsvImporter::importNormalizedCsv`).
+4. Nettoyage des fichiers temporaires en fin de traitement (hors mode debug).
+5. En cas d'echec: enregistrement `import_error_[TABLE]` et statut `failed`.
 
-## 7) Transformation et insertion dans `StockImport`
-1. Lecture en chunks (`1000` lignes).
-2. Increment de progression cache a chaque chunk.
-3. Resolution des champs via mapping + fallback (`resolveValue`).
-4. Normalisation numerique (`toDecimal`) pour `initial`, `entree`, `sortie`, `finale`, `pump`, `valeur`.
-5. Regles de filtrage (`shouldSkip` / `skipRow`):
-- Ligne sans `article`
-- Lignes `Groupe...`
-- Lignes `Total...`
-- Lignes avec <= 2 colonnes non vides
-6. Insertion SQL en lot dans la table cible.
-
-## 8) Suivi de progression cote front
+## 7) Suivi de progression cote front
 - Route: `GET /import/status?table=...`
 - Source prioritaire: cache (`import_processed_...`, `import_total_...`)
 - Fallback: `count(*)` SQL si le cache processed est absent
 - Pourcentage calcule et borne a `100`
 
-## 9) Points d'extension
+## 8) Points d'extension
 - Ajouter de nouveaux synonymes dans `ColumnMapper::synonyms()`.
 - Ajuster la tolerance fuzzy/contains dans `ColumnMapper::mapHeaders()`.
 - Ajuster la fenetre de detection (`maxLines`) dans `FastHeaderDetector::detect()`.
-- Ajuster la taille de chunk dans `StockImport::chunkSize()`.
+- Ajuster `IMPORT_NORMALIZE_CHUNK_SIZE` et `IMPORT_SQL_BATCH_SIZE` dans `config/import_perf.php`.
