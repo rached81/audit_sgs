@@ -65,6 +65,9 @@ Route::middleware(['auth', 'password_changed'])->group(function () {
     // User Management
     Route::middleware(['admin'])->group(function () {
         Route::delete('/consultation/{tableName}', [StockConsultationController::class, 'destroy'])->name('consultation.destroy');
+    });
+
+    Route::middleware(['super_admin'])->group(function () {
         Route::resource('users', UserController::class);
     });
 });

@@ -12,7 +12,7 @@ class EnsureUserIsSuperAdmin
     {
         $user = $request->user();
         if (!$user || !method_exists($user, 'isSuperAdmin') || !$user->isSuperAdmin()) {
-            abort(403, 'Acces reserve au super administrateur.');
+            abort(403, 'Accès réservé au Super Admin.');
         }
 
         return $next($request);

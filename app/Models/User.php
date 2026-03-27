@@ -66,7 +66,6 @@ class User extends Authenticatable
             return in_array((string) $this->matricule, array_map('strval', $allowedMatricules), true);
         }
 
-        // Backward compatibility: if no explicit list, allow admin profiles.
-        return (string) $this->profile === 'admin';
+        return false;
     }
 }
