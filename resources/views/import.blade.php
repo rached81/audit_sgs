@@ -110,14 +110,14 @@
                 <div class="text-sm font-bold text-gray-800 truncate">Import en cours</div>
                 <div id="stickyText" class="text-xs text-gray-600 truncate">Initialisation…</div>
             </div>
-            <div class="flex items-center gap-2 shrink-0">
-                <button id="stickyOpenBtn" type="button" class="px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold">
+            <div class="flex items-center gap-2 shrink-0 flex-wrap justify-end">
+                <button id="stickyOpenBtn" type="button" class="px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold whitespace-nowrap">
                     Ouvrir
                 </button>
-                <button id="stickyCancelBtn" type="button" class="px-3 py-1.5 rounded-lg bg-red-600 hover:bg-red-700 text-white text-sm font-semibold">
+                <button id="stickyCancelBtn" type="button" class="px-3 py-1.5 rounded-lg bg-red-600 hover:bg-red-700 text-white text-sm font-semibold whitespace-nowrap">
                     Annuler
                 </button>
-                <button id="stickyDismissBtn" type="button" class="px-3 py-1.5 rounded-lg bg-gray-100 hover:bg-gray-200 text-gray-700 text-sm font-semibold">
+                <button id="stickyDismissBtn" type="button" class="px-3 py-1.5 rounded-lg bg-gray-100 hover:bg-gray-200 text-gray-700 text-sm font-semibold whitespace-nowrap">
                     Masquer
                 </button>
             </div>
