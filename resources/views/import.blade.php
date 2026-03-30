@@ -114,6 +114,9 @@
                 <button id="stickyOpenBtn" type="button" class="px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold">
                     Ouvrir
                 </button>
+                <button id="stickyCancelBtn" type="button" class="px-3 py-1.5 rounded-lg bg-red-600 hover:bg-red-700 text-white text-sm font-semibold">
+                    Annuler
+                </button>
                 <button id="stickyDismissBtn" type="button" class="px-3 py-1.5 rounded-lg bg-gray-100 hover:bg-gray-200 text-gray-700 text-sm font-semibold">
                     Masquer
                 </button>
@@ -884,6 +887,7 @@
             const closeOverlayBtn = document.getElementById('closeOverlayBtn');
         const cancelImportBtn = document.getElementById('cancelImportBtn');
         const stickyOpenBtn = document.getElementById('stickyOpenBtn');
+        const stickyCancelBtn = document.getElementById('stickyCancelBtn');
         const stickyDismissBtn = document.getElementById('stickyDismissBtn');
 
             if (minimizeOverlayBtn) minimizeOverlayBtn.onclick = hideOverlay;
@@ -891,27 +895,38 @@
         if (stickyOpenBtn) stickyOpenBtn.onclick = showOverlay;
         if (stickyDismissBtn) stickyDismissBtn.onclick = hideSticky;
 
-        if (cancelImportBtn) {
-            cancelImportBtn.onclick = function () {
-                const tableName = currentUploadTable || sessionStorage.getItem('pendingImportTable') || '';
-                if (!tableName) return;
-                cancelImportBtn.disabled = true;
-                cancelImportBtn.innerText = 'Annulation...';
-                requestCancel(tableName).then((ok) => {
-                    if (!ok) {
-                        cancelImportBtn.disabled = false;
-                        cancelImportBtn.innerText = "Annuler l'import";
-                        return;
-                    }
-                    clearPendingImport();
-                    setSteps('failed');
-                    const estimateDiv = document.getElementById('timeEstimate');
-                    const spinner = document.getElementById('loadingSpinner');
-                    if (spinner) spinner.style.display = 'none';
-                    if (estimateDiv) estimateDiv.innerHTML = "<span class='text-red-600 font-bold'>Import annulé.</span>";
-                    hideSticky();
-                });
-            };
+        const cancelButtons = [cancelImportBtn, stickyCancelBtn].filter(Boolean);
+        function cancelCurrentImport() {
+            const tableName = currentUploadTable || sessionStorage.getItem('pendingImportTable') || '';
+            if (!tableName) return;
+
+            cancelButtons.forEach(btn => {
+                btn.disabled = true;
+                btn.dataset.oldText = btn.innerText;
+                btn.innerText = 'Annulation...';
+            });
+
+            requestCancel(tableName).then((ok) => {
+                if (!ok) {
+                    cancelButtons.forEach(btn => {
+                        btn.disabled = false;
+                        btn.innerText = btn.dataset.oldText || "Annuler l'import";
+                        delete btn.dataset.oldText;
+                    });
+                    return;
+                }
+
+                clearPendingImport();
+                setSteps('failed');
+                const estimateDiv = document.getElementById('timeEstimate');
+                const spinner = document.getElementById('loadingSpinner');
+                if (spinner) spinner.style.display = 'none';
+                if (estimateDiv) estimateDiv.innerHTML = "<span class='text-red-600 font-bold'>Import annulé.</span>";
+                hideSticky();
+            });
         }
+
+        if (cancelImportBtn) cancelImportBtn.onclick = cancelCurrentImport;
+        if (stickyCancelBtn) stickyCancelBtn.onclick = cancelCurrentImport;
     </script>
 @endsection
