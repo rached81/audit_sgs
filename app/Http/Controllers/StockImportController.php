@@ -195,6 +195,40 @@ class StockImportController extends Controller
         return $this->doImport($fullPath, $tableName, $mapping, $headingRow, $path, false, $runId, $request);
     }
 
+    public function cancel(Request $request)
+    {
+        $request->validate([
+            'table' => 'required|string',
+        ]);
+
+        $tableName = (string) $request->input('table');
+        if (stripos($tableName, 'RES_') !== 0) {
+            abort(403, 'Action non autorisee.');
+        }
+
+        $ttlSeconds = 3600;
+        Cache::put("import_cancel_{$tableName}", true, $ttlSeconds);
+        Cache::put("import_status_{$tableName}", 'cancelled', $ttlSeconds);
+        Cache::put("import_error_{$tableName}", "Import annule par l'utilisateur.", $ttlSeconds);
+
+        $this->operationLogger->log([
+            'run_id' => (string) str()->uuid(),
+            'table_name' => $tableName,
+            'operation' => 'cancel_import',
+            'status' => 'success',
+            'user_id' => $request->user()?->id,
+            'user_matricule' => $request->user()?->matricule,
+            'user_name' => trim((string) (($request->user()?->prenom ?? '') . ' ' . ($request->user()?->nom ?? ''))) ?: null,
+            'ip_address' => $request->ip(),
+            'message' => 'Annulation demandee depuis l interface.',
+            'context' => [
+                'route' => $request->route()?->getName(),
+            ],
+        ]);
+
+        return response()->json(['ok' => true]);
+    }
+
     private function doImport(
         $fullPath,
         $tableName,
@@ -220,6 +254,7 @@ class StockImportController extends Controller
         // Init progress cache early so the front can poll "initialisation"
         Cache::put("import_total_{$tableName}", 0, 3600);
         Cache::put("import_processed_{$tableName}", 0, 3600);
+        Cache::forget("import_cancel_{$tableName}");
         Cache::forget("import_error_{$tableName}");
         Cache::forget("import_done_{$tableName}");
         Cache::put("import_status_{$tableName}", 'running', 3600);
@@ -459,6 +494,20 @@ class StockImportController extends Controller
         $tableName = $request->input('table');
         if (!$tableName) {
             return response()->json(['count' => 0, 'percent' => 0, 'total' => 0, 'status' => 'idle', 'error' => null]);
+        }
+
+        if (Cache::get("import_cancel_{$tableName}") === true) {
+            return response()->json([
+                'count' => (int) (Cache::get("import_processed_{$tableName}") ?? 0),
+                'percent' => 0,
+                'total' => (int) (Cache::get("import_total_{$tableName}") ?? 0),
+                'status' => 'cancelled',
+                'error' => Cache::get("import_error_{$tableName}") ?? "Import annule par l'utilisateur.",
+                'stage' => 'cancelled',
+                'eta_seconds' => null,
+                'stage_percent' => null,
+                'overall_percent' => null,
+            ]);
         }
 
         $processed = Cache::get("import_processed_{$tableName}");

@@ -2,6 +2,7 @@
 
 namespace App\Jobs;
 
+use App\Exceptions\ImportCancelledException;
 use App\Services\ImportOperationLogger;
 use App\Services\StockCsvImporter;
 use Illuminate\Queue\SerializesModels;
@@ -61,6 +62,7 @@ class ImportStockJob
         $debugRelativeDir = null;
         $debugEnabled = (bool) config('import_perf.debug_enabled', false);
         $ttlSeconds = 3600;
+        $cancelKey = "import_cancel_{$this->tableName}";
 
         $this->putRunState([
             'run_id' => $this->runId,
@@ -106,6 +108,7 @@ class ImportStockJob
         ]);
 
         try {
+            $this->throwIfCancelled($cancelKey);
             $importer = app(StockCsvImporter::class);
 
             $stepStart = microtime(true);
@@ -132,7 +135,8 @@ class ImportStockJob
                 $this->mapping,
                 $this->headingRow,
                 $debugRelativeDir,
-                function (array $p) use ($ttlSeconds, $cleaningStartAt): void {
+                function (array $p) use ($ttlSeconds, $cleaningStartAt, $cancelKey): void {
+                    $this->throwIfCancelled($cancelKey);
                     $highest = (int) ($p['highest_row'] ?? 0);
                     $scanned = (int) ($p['scanned_rows'] ?? 0);
                     $stagePercent = $highest > 0 ? (int) min(100, round(($scanned / $highest) * 100)) : 0;
@@ -175,6 +179,7 @@ class ImportStockJob
                 'duration_ms' => $this->toMs($stepStart),
             ]);
 
+            $this->throwIfCancelled($cancelKey);
             $stepStart = microtime(true);
             Cache::put("import_total_{$this->tableName}", $normalized['rows'], 3600);
             Cache::put("import_processed_{$this->tableName}", 0, 3600);
@@ -215,7 +220,8 @@ class ImportStockJob
             $inserted = $importer->importNormalizedCsv(
                 $normalized['csv_path'],
                 $this->tableName,
-                function (int $delta) use ($ttlSeconds, $insertingStartAt, $total): void {
+                function (int $delta) use ($ttlSeconds, $insertingStartAt, $total, $cancelKey): void {
+                    $this->throwIfCancelled($cancelKey);
                     Cache::increment("import_processed_{$this->tableName}", $delta);
 
                     $processed = (int) (Cache::get("import_processed_{$this->tableName}") ?? 0);
@@ -309,6 +315,41 @@ class ImportStockJob
                 'total' => Cache::get("import_total_{$this->tableName}"),
                 'status' => Cache::get("import_status_{$this->tableName}"),
                 'duration_ms' => $this->toMs($jobStart),
+            ]);
+        } catch (ImportCancelledException $e) {
+            Cache::put("import_error_{$this->tableName}", "Import annule par l'utilisateur.", 3600);
+            Cache::put("import_status_{$this->tableName}", 'cancelled', 3600);
+            Cache::put("import_done_{$this->tableName}", false, 3600);
+            $this->putTableState([
+                'status' => 'cancelled',
+                'stage' => 'cancelled',
+                'error' => "Import annule par l'utilisateur.",
+                'eta_seconds' => null,
+                'updated_at' => time(),
+                'finished_at' => time(),
+            ], $ttlSeconds);
+            $this->putRunState([
+                'status' => 'cancelled',
+                'stage' => 'cancelled',
+                'error' => "Import annule par l'utilisateur.",
+                'updated_at' => time(),
+                'finished_at' => time(),
+            ], $ttlSeconds);
+            Log::channel('import')->warning('import.job.cancelled', [
+                'run_id' => $this->runId,
+                'table' => $this->tableName,
+                'duration_ms' => $this->toMs($jobStart),
+            ]);
+            $operationLogger->log([
+                'run_id' => $this->runId,
+                'table_name' => $this->tableName,
+                'operation' => 'cancel_import',
+                'status' => 'success',
+                'user_id' => $this->initiatorId,
+                'user_matricule' => $this->initiatorMatricule,
+                'user_name' => $this->initiatorName,
+                'ip_address' => $this->initiatorIp,
+                'message' => 'Import annule (flag detecte dans le job).',
             ]);
         } catch (\Exception $e) {
             Cache::put("import_error_{$this->tableName}", $e->getMessage(), 3600);
@@ -427,6 +468,13 @@ class ImportStockJob
                         : 'Echec suppression du CSV normalise temporaire.',
                 ]);
             }
+        }
+    }
+
+    private function throwIfCancelled(string $cancelKey): void
+    {
+        if (Cache::get($cancelKey) === true) {
+            throw new ImportCancelledException('cancelled');
         }
     }
 

@@ -26,6 +26,12 @@
             <div id="progressText" class="text-sm text-indigo-700 font-bold mb-4">0%</div>
 
             <p id="infoText" class="text-gray-600 mb-4">Veuillez patienter, ne fermez pas la page.</p>
+            <div class="mb-4">
+                <button id="cancelImportBtn" type="button"
+                        class="w-full bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-4 rounded-lg shadow transition-colors">
+                    Annuler l'import
+                </button>
+            </div>
 
             <!-- Steps (vertical) -->
             <div class="mb-4 text-left">
@@ -92,6 +98,7 @@
          data-table="{{ session('import_table') }}"
          data-events-url="{{ route('import.events', [], false) }}"
          data-status-url="{{ route('import.status', [], false) }}"
+         data-cancel-url="{{ route('import.cancel', [], false) }}"
          data-consultation-url="{{ route('consultation.index', [], false) }}"
          class="hidden"></div>
 
@@ -558,12 +565,35 @@
         const importTable = importTableFromSession || (sessionStorage.getItem('pendingImportTable') || '');
         const routeEvents = cfg?.dataset?.eventsUrl || '';
         const routeStatus = cfg?.dataset?.statusUrl || '';
+        const routeCancel = cfg?.dataset?.cancelUrl || '';
         const routeConsultation = cfg?.dataset?.consultationUrl || '';
 
         function clearPendingImport() {
             sessionStorage.removeItem('pendingImportTable');
             sessionStorage.removeItem('pendingImportRunId');
             sessionStorage.removeItem('pendingImportAt');
+        }
+
+        function getCsrfToken() {
+            const el = document.querySelector('input[name="_token"]');
+            return el?.value || '';
+        }
+
+        function requestCancel(tableName) {
+            if (!routeCancel || !tableName) return Promise.resolve(false);
+            const token = getCsrfToken();
+            return fetch(routeCancel, {
+                method: 'POST',
+                headers: {
+                    'Accept': 'application/json',
+                    'Content-Type': 'application/json',
+                    ...(token ? { 'X-CSRF-TOKEN': token } : {}),
+                },
+                body: JSON.stringify({ table: tableName }),
+            })
+            .then(r => r.ok ? r.json().catch(() => ({})) : Promise.reject(r))
+            .then(() => true)
+            .catch(() => false);
         }
 
         function isPendingImportRecent(maxAgeMs = 10 * 60 * 1000) {
@@ -663,6 +693,18 @@
                              if (spinner) spinner.style.display = 'none';
                              setSteps('failed');
                              if (estimateDiv) estimateDiv.innerHTML = "<span class='text-red-600 font-bold'>Import echoue : " + (error ?? "Erreur inconnue") + "</span>";
+                             clearInterval(activePollInterval);
+                             activePollInterval = null;
+                             return;
+                        }
+
+                        if (status === 'cancelled') {
+                             isFinished = true;
+                             clearPendingImport();
+                             if (spinner) spinner.style.display = 'none';
+                             setSteps('failed');
+                             if (estimateDiv) estimateDiv.innerHTML = "<span class='text-red-600 font-bold'>Import annulé.</span>";
+                             hideSticky();
                              clearInterval(activePollInterval);
                              activePollInterval = null;
                              return;
@@ -840,6 +882,7 @@
         // Background/details UX wiring
             const minimizeOverlayBtn = document.getElementById('minimizeOverlayBtn');
             const closeOverlayBtn = document.getElementById('closeOverlayBtn');
+        const cancelImportBtn = document.getElementById('cancelImportBtn');
         const stickyOpenBtn = document.getElementById('stickyOpenBtn');
         const stickyDismissBtn = document.getElementById('stickyDismissBtn');
 
@@ -847,5 +890,28 @@
             if (closeOverlayBtn) closeOverlayBtn.onclick = hideOverlay;
         if (stickyOpenBtn) stickyOpenBtn.onclick = showOverlay;
         if (stickyDismissBtn) stickyDismissBtn.onclick = hideSticky;
+
+        if (cancelImportBtn) {
+            cancelImportBtn.onclick = function () {
+                const tableName = currentUploadTable || sessionStorage.getItem('pendingImportTable') || '';
+                if (!tableName) return;
+                cancelImportBtn.disabled = true;
+                cancelImportBtn.innerText = 'Annulation...';
+                requestCancel(tableName).then((ok) => {
+                    if (!ok) {
+                        cancelImportBtn.disabled = false;
+                        cancelImportBtn.innerText = "Annuler l'import";
+                        return;
+                    }
+                    clearPendingImport();
+                    setSteps('failed');
+                    const estimateDiv = document.getElementById('timeEstimate');
+                    const spinner = document.getElementById('loadingSpinner');
+                    if (spinner) spinner.style.display = 'none';
+                    if (estimateDiv) estimateDiv.innerHTML = "<span class='text-red-600 font-bold'>Import annulé.</span>";
+                    hideSticky();
+                });
+            };
+        }
     </script>
 @endsection
