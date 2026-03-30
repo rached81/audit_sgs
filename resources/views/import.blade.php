@@ -99,6 +99,7 @@
          data-events-url="{{ route('import.events', [], false) }}"
          data-status-url="{{ route('import.status', [], false) }}"
          data-cancel-url="{{ route('import.cancel', [], false) }}"
+         data-login-url="{{ route('login', [], false) }}"
          data-consultation-url="{{ route('consultation.index', [], false) }}"
          class="hidden"></div>
 
@@ -471,7 +472,7 @@
                     // After upload finishes, backend may have redirected (mapping page or back to import).
                     // We navigate to the final URL so normal polling logic resumes.
                     if (xhr.status === 401) {
-                        window.location.href = '/login';
+                        window.location.href = routeLogin;
                         return;
                     }
 
@@ -569,6 +570,7 @@
         const routeEvents = cfg?.dataset?.eventsUrl || '';
         const routeStatus = cfg?.dataset?.statusUrl || '';
         const routeCancel = cfg?.dataset?.cancelUrl || '';
+        const routeLogin = cfg?.dataset?.loginUrl || '/login';
         const routeConsultation = cfg?.dataset?.consultationUrl || '';
 
         function clearPendingImport() {
@@ -633,7 +635,7 @@
                 fetch(statusUrl, { headers: { 'Accept': 'application/json' } })
                     .then(response => {
                         if (response.status === 401) {
-                            window.location.href = '/login';
+                            window.location.href = routeLogin;
                             return;
                         }
                         if (!response.ok) {
