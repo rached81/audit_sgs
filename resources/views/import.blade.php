@@ -567,11 +567,35 @@
         // Robust fallback for XHR upload -> redirect chain where flash may be consumed.
         const importRunId = importRunIdFromSession || (sessionStorage.getItem('pendingImportRunId') || '');
         const importTable = importTableFromSession || (sessionStorage.getItem('pendingImportTable') || '');
-        const routeEvents = cfg?.dataset?.eventsUrl || '';
-        const routeStatus = cfg?.dataset?.statusUrl || '';
-        const routeCancel = cfg?.dataset?.cancelUrl || '';
-        const routeLogin = cfg?.dataset?.loginUrl || '/login';
-        const routeConsultation = cfg?.dataset?.consultationUrl || '';
+        // const routeEvents = cfg?.dataset?.eventsUrl || '';
+        // const routeStatus = cfg?.dataset?.statusUrl || '';
+        // const routeCancel = cfg?.dataset?.cancelUrl || '';
+        // const routeLogin = cfg?.dataset?.loginUrl || '/login';
+        // const routeConsultation = cfg?.dataset?.consultationUrl || '';
+        function getBasePath() {
+  const p = String(window.location.pathname || '/');
+  const idx = p.indexOf('/import');
+  return idx > 0 ? p.slice(0, idx) : '';
+}
+
+function normalizeUrl(url) {
+  const u = String(url || '');
+  if (!u) return '';
+  if (/^https?:\/\//i.test(u)) return u;
+  if (!u.startsWith('/')) return u;
+
+  const base = getBasePath();
+  if (!base) return u;
+  if (u === base || u.startsWith(base + '/')) return u;
+
+  return base + u;
+}
+
+const routeEvents = normalizeUrl(cfg?.dataset?.eventsUrl || '');
+const routeStatus = normalizeUrl(cfg?.dataset?.statusUrl || '');
+const routeCancel = normalizeUrl(cfg?.dataset?.cancelUrl || '');
+const routeLogin = normalizeUrl(cfg?.dataset?.loginUrl || '/login');
+const routeConsultation = normalizeUrl(cfg?.dataset?.consultationUrl || '');
 
         function clearPendingImport() {
             sessionStorage.removeItem('pendingImportTable');
