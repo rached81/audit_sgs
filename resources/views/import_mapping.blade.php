@@ -82,3 +82,55 @@
     </form>
 </div>
 @endsection
+
+@section('scripts')
+<script>
+(function () {
+    const tableName = @json($table_name ?? '');
+    const cancelUrl = @json(route('import.cancel', [], false));
+    const importFormUrl = @json(route('import.form', [], false));
+
+    function normPath(u) {
+        u = String(u || '');
+        if (!u || /^https?:\/\//i.test(u)) return u;
+        if (!u.startsWith('/')) return u;
+        const p = String(window.location.pathname || '/');
+        const idx = p.indexOf('/import');
+        const base = idx > 0 ? p.slice(0, idx) : '';
+        if (!base) return u;
+        if (u === base || u.startsWith(base + '/')) return u;
+        return base + u;
+    }
+
+    const dock = document.createElement('div');
+    dock.className = 'fixed bottom-0 left-0 right-0 z-[100] border-t-2 border-red-300 bg-white shadow-[0_-4px_24px_rgba(0,0,0,0.12)]';
+    dock.innerHTML = '<div class="max-w-[95rem] mx-auto px-4 py-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">' +
+        '<p class="text-sm text-gray-700"><span class="font-semibold text-red-700">Mappage en cours</span> — vous pouvez annuler pour revenir à l\'écran d\'import.</p>' +
+        '<button type="button" id="mappingDockCancelBtn" class="px-5 py-2.5 rounded-lg bg-red-600 hover:bg-red-700 text-white font-bold text-sm whitespace-nowrap">Annuler et quitter</button></div>';
+    document.body.appendChild(dock);
+    document.body.classList.add('pb-28');
+
+    document.getElementById('mappingDockCancelBtn').addEventListener('click', function () {
+        if (!tableName) {
+            window.location.href = normPath(importFormUrl);
+            return;
+        }
+        if (!confirm('Annuler le mappage et revenir à l\'écran d\'import ?')) return;
+        const token = document.querySelector('input[name="_token"]')?.value || '';
+        fetch(normPath(cancelUrl), {
+            method: 'POST',
+            headers: {
+                'Accept': 'application/json',
+                'Content-Type': 'application/json',
+                ...(token ? { 'X-CSRF-TOKEN': token } : {}),
+            },
+            body: JSON.stringify({ table: tableName }),
+        }).then(function () {
+            window.location.href = normPath(importFormUrl);
+        }).catch(function () {
+            window.location.href = normPath(importFormUrl);
+        });
+    });
+})();
+</script>
+@endsection

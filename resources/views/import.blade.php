@@ -1,10 +1,13 @@
 @extends('layouts.app')
 
 @section('content')
-    <!-- Loading Overlay -->
-        <div id="loadingOverlay" class="fixed inset-0 bg-black/50 z-50 flex items-center justify-center hidden">
-        <div class="bg-white p-8 rounded-lg shadow-xl text-center max-w-md mx-4 w-full relative">
-            <div class="absolute top-3 right-3 flex items-center gap-2">
+    <!-- Bannière succès (affichée après fermeture du modal) -->
+    <div id="importSuccessBanner" class="hidden mb-6 rounded-lg bg-green-100 border border-green-300 text-green-800 px-4 py-3 text-center font-semibold" role="status"></div>
+
+    <!-- Loading Overlay (sous la barre d'annulation fixe) -->
+        <div id="loadingOverlay" class="fixed inset-0 bg-black/50 z-[90] flex items-center justify-center hidden overflow-y-auto py-8">
+        <div class="bg-white p-8 rounded-lg shadow-xl text-center max-w-md mx-4 w-full relative max-h-[min(90vh,40rem)] overflow-y-auto">
+            <div class="absolute top-3 right-3 flex items-center gap-2 z-10">
                 <button id="minimizeOverlayBtn" type="button"
                         class="h-9 w-9 rounded-lg bg-gray-100 hover:bg-gray-200 text-gray-700 font-extrabold leading-none"
                         aria-label="Réduire">
@@ -26,12 +29,7 @@
             <div id="progressText" class="text-sm text-indigo-700 font-bold mb-4">0%</div>
 
             <p id="infoText" class="text-gray-600 mb-4">Veuillez patienter, ne fermez pas la page.</p>
-            <div class="mb-4">
-                <button id="cancelImportBtn" type="button"
-                        class="w-full bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-4 rounded-lg shadow transition-colors">
-                    Annuler l'import
-                </button>
-            </div>
+            <p class="text-xs text-gray-500 mb-4">Pour interrompre l’import, utilisez le bouton rouge <strong>en bas d’écran</strong> (toujours visible).</p>
 
             <!-- Steps (vertical) -->
             <div class="mb-4 text-left">
@@ -103,9 +101,9 @@
          data-consultation-url="{{ route('consultation.index', [], false) }}"
          class="hidden"></div>
 
-    <!-- Sticky mini progress bar (shown when overlay is reduced) -->
+    <!-- Sticky mini progress bar (shown when overlay is reduced) — au-dessus de l’overlay, sous la barre d’annulation -->
     <div id="importSticky"
-         class="hidden fixed bottom-4 left-1/2 -translate-x-1/2 z-50 w-[min(46rem,calc(100vw-2rem))] bg-white border border-gray-200 shadow-lg rounded-xl px-4 py-3">
+         class="hidden fixed bottom-20 left-1/2 -translate-x-1/2 z-[95] w-[min(46rem,calc(100vw-2rem))] bg-white border border-gray-200 shadow-lg rounded-xl px-4 py-3">
         <div class="flex items-center justify-between gap-3">
             <div class="min-w-0">
                 <div class="text-sm font-bold text-gray-800 truncate">Import en cours</div>
@@ -125,6 +123,18 @@
         </div>
         <div class="mt-2 w-full bg-gray-200 rounded-full h-2 overflow-hidden">
             <div id="stickyBar" class="bg-indigo-600 h-2 transition-all duration-300" style="width: 0%"></div>
+        </div>
+    </div>
+
+    <!-- Barre fixe : annulation toujours accessible (z-index max) -->
+    <div id="importCancelDock" class="hidden fixed bottom-0 left-0 right-0 z-[100] border-t-2 border-red-300 bg-white shadow-[0_-4px_24px_rgba(0,0,0,0.12)]">
+        <div class="max-w-[95rem] mx-auto px-4 py-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+            <p class="text-sm text-gray-700"><span class="font-semibold text-red-700">Import en cours</span> — vous pouvez annuler à tout moment (le traitement serveur peut s’arrêter dans les instants qui suivent).</p>
+            <div class="flex flex-wrap items-center gap-2 shrink-0 justify-end">
+                <button type="button" id="dockCancelImportBtn" class="px-5 py-2.5 rounded-lg bg-red-600 hover:bg-red-700 text-white font-bold text-sm shadow whitespace-nowrap">
+                    Annuler l'import
+                </button>
+            </div>
         </div>
     </div>
 
@@ -369,12 +379,40 @@
         }
 
         let currentUploadTable = '';
+        let activePollInterval = null;
+        let importEventSource = null;
+
+        function setImportTrackingActive(active) {
+            const dock = document.getElementById('importCancelDock');
+            if (dock) dock.classList.toggle('hidden', !active);
+            document.body.classList.toggle('pb-28', !!active);
+        }
+
+        function stopImportPolling() {
+            if (activePollInterval) {
+                clearInterval(activePollInterval);
+                activePollInterval = null;
+            }
+        }
+
+        function stopImportSse() {
+            if (importEventSource) {
+                try { importEventSource.close(); } catch (e) { /* no-op */ }
+                importEventSource = null;
+            }
+        }
 
         // AJAX upload with real progress (XHR upload.onprogress).
         const importForm = document.getElementById('importForm');
         if (importForm) {
             importForm.addEventListener('submit', function (e) {
                 e.preventDefault();
+
+                const succBanner = document.getElementById('importSuccessBanner');
+                if (succBanner) {
+                    succBanner.classList.add('hidden');
+                    succBanner.textContent = '';
+                }
 
                 const overlay = document.getElementById('loadingOverlay');
                 const progressBar = document.getElementById('progressBar');
@@ -386,6 +424,7 @@
                 showOverlay();
                 setSteps('starting');
                 hideSticky();
+                setImportTrackingActive(true);
 
                 if (spinner) spinner.style.display = '';
                 if (progressBar) progressBar.style.width = '0%';
@@ -495,6 +534,7 @@
                             if (!payload || payload.ok === false) {
                                 if (spinner) spinner.style.display = 'none';
                                 setSteps('failed');
+                                setImportTrackingActive(false);
                                 const msg = payload?.message || 'Réponse invalide du serveur pendant le démarrage de l\'import.';
                                 if (estimateDiv) estimateDiv.innerHTML = "<span class='text-red-600 font-bold'>" + msg + "</span>";
                                 showSticky();
@@ -520,6 +560,7 @@
 
                         // If manual mapping is required, render that page.
                         if (looksLikeMapping) {
+                            setImportTrackingActive(false);
                             document.open();
                             document.write(html);
                             document.close();
@@ -539,12 +580,14 @@
                         // Keep modal visible with explicit message if table could not be resolved.
                         if (estimateDiv) estimateDiv.innerHTML = "<span class='text-red-600 font-bold'>Impossible de démarrer le suivi (table introuvable).</span>";
                         setSteps('failed');
+                        setImportTrackingActive(false);
                         return;
                     }
 
                     // Error
                     if (spinner) spinner.style.display = 'none';
                     setSteps('failed');
+                    setImportTrackingActive(false);
                     const msg = 'Erreur upload (HTTP ' + xhr.status + ').';
                     if (estimateDiv) estimateDiv.innerHTML = "<span class='text-red-600 font-bold'>" + msg + "</span>";
                     showSticky();
@@ -553,6 +596,7 @@
                 xhr.onerror = function () {
                     if (spinner) spinner.style.display = 'none';
                     setSteps('failed');
+                    setImportTrackingActive(false);
                     if (estimateDiv) estimateDiv.innerHTML = "<span class='text-red-600 font-bold'>Erreur réseau pendant l'upload.</span>";
                     showSticky();
                 };
@@ -632,13 +676,9 @@ const routeConsultation = normalizeUrl(cfg?.dataset?.consultationUrl || '');
         }
 
         // Allow starting polling from upload handler without reloading.
-        let activePollInterval = null;
         function startPollingTracking(tableName) {
             if (!tableName || !routeStatus) return;
-            if (activePollInterval) {
-                clearInterval(activePollInterval);
-                activePollInterval = null;
-            }
+            stopImportPolling();
 
             const statusUrl = routeStatus + "?table=" + encodeURIComponent(tableName);
             const estimateDiv = document.getElementById('timeEstimate');
@@ -647,6 +687,7 @@ const routeConsultation = normalizeUrl(cfg?.dataset?.consultationUrl || '');
             const spinner = document.getElementById('loadingSpinner');
 
             showOverlay();
+            setImportTrackingActive(true);
             // Ne pas afficher "Mappage entête" ici : le suivi concerne le job (nettoyage/insertion).
             setSteps('cleaning');
             if (document.getElementById('stepCleaningMeta')) {
@@ -741,8 +782,10 @@ const routeConsultation = normalizeUrl(cfg?.dataset?.consultationUrl || '');
                              if (spinner) spinner.style.display = 'none';
                              setSteps('failed');
                              if (estimateDiv) estimateDiv.innerHTML = "<span class='text-red-600 font-bold'>Import echoue : " + (error ?? "Erreur inconnue") + "</span>";
-                             clearInterval(activePollInterval);
-                             activePollInterval = null;
+                             stopImportPolling();
+                             setImportTrackingActive(false);
+                             hideOverlay();
+                             hideSticky();
                              return;
                         }
 
@@ -753,22 +796,27 @@ const routeConsultation = normalizeUrl(cfg?.dataset?.consultationUrl || '');
                              setSteps('failed');
                              if (estimateDiv) estimateDiv.innerHTML = "<span class='text-red-600 font-bold'>Import annulé.</span>";
                              hideSticky();
-                             clearInterval(activePollInterval);
-                             activePollInterval = null;
+                             stopImportPolling();
+                             setImportTrackingActive(false);
+                             hideOverlay();
                              return;
                         }
 
                         if (status === 'done') {
                              isFinished = true;
                              clearPendingImport();
-                             if (estimateDiv) estimateDiv.innerHTML = "<span class='text-green-600 font-bold text-lg'>Importation terminee avec succes !</span>";
-                             const infoText = document.getElementById('infoText');
-                             if (infoText) infoText.innerText = "";
                              if (spinner) spinner.style.display = 'none';
                              setSteps('done');
+                             stopImportPolling();
+                             setImportTrackingActive(false);
+                             hideOverlay();
                              hideSticky();
-                             clearInterval(activePollInterval);
-                             activePollInterval = null;
+                             const banner = document.getElementById('importSuccessBanner');
+                             if (banner) {
+                                 banner.textContent = 'Importation terminée avec succès.';
+                                 banner.classList.remove('hidden');
+                             }
+                             window.scrollTo({ top: 0, behavior: 'smooth' });
                         }
                     })
                     .catch(err => {
@@ -795,9 +843,12 @@ const routeConsultation = normalizeUrl(cfg?.dataset?.consultationUrl || '');
 
             showOverlay();
             setSteps('starting');
+            setImportTrackingActive(true);
 
             let isFinished = false;
-            const source = new EventSource(sseUrl);
+            stopImportSse();
+            importEventSource = new EventSource(sseUrl);
+            const source = importEventSource;
 
             source.addEventListener('progress', (event) => {
                 if (isFinished) return;
@@ -856,32 +907,28 @@ const routeConsultation = normalizeUrl(cfg?.dataset?.consultationUrl || '');
                     spinner.style.display = 'none';
                     setSteps('failed');
                     estimateDiv.innerHTML = "<span class='text-red-600 font-bold'>Import echoue : " + (error ?? "Erreur inconnue") + "</span>";
-                    source.close();
+                    setImportTrackingActive(false);
+                    hideOverlay();
+                    hideSticky();
+                    stopImportSse();
                     return;
                 }
 
                 if (status === 'done') {
                     isFinished = true;
                     clearPendingImport();
-                    estimateDiv.innerHTML = "<span class='text-green-600 font-bold text-lg'>Importation terminee avec succes !</span>";
-                    document.getElementById('infoText').innerText = "";
                     spinner.style.display = 'none';
                     setSteps('done');
+                    setImportTrackingActive(false);
+                    hideOverlay();
                     hideSticky();
-
-                    if (!document.getElementById('finishBtn')) {
-                        const btn = document.createElement('a');
-                        btn.id = 'finishBtn';
-                        btn.href = routeConsultation;
-                        btn.innerText = "Consulter les donnees";
-                        btn.className = "mt-6 inline-block w-full bg-green-600 hover:bg-green-700 text-white font-bold py-3 px-4 rounded shadow transition-colors";
-                        document.querySelector('#loadingOverlay > div').appendChild(btn);
+                    stopImportSse();
+                    const banner = document.getElementById('importSuccessBanner');
+                    if (banner) {
+                        banner.textContent = 'Importation terminée avec succès.';
+                        banner.classList.remove('hidden');
                     }
-
-                    const closeBtn = document.getElementById('closeOverlayBtn');
-                    if (closeBtn) closeBtn.remove();
-
-                    source.close();
+                    window.scrollTo({ top: 0, behavior: 'smooth' });
                 }
             });
 
@@ -930,7 +977,7 @@ const routeConsultation = normalizeUrl(cfg?.dataset?.consultationUrl || '');
         // Background/details UX wiring
             const minimizeOverlayBtn = document.getElementById('minimizeOverlayBtn');
             const closeOverlayBtn = document.getElementById('closeOverlayBtn');
-        const cancelImportBtn = document.getElementById('cancelImportBtn');
+        const dockCancelImportBtn = document.getElementById('dockCancelImportBtn');
         const stickyOpenBtn = document.getElementById('stickyOpenBtn');
         const stickyCancelBtn = document.getElementById('stickyCancelBtn');
         const stickyDismissBtn = document.getElementById('stickyDismissBtn');
@@ -940,7 +987,7 @@ const routeConsultation = normalizeUrl(cfg?.dataset?.consultationUrl || '');
         if (stickyOpenBtn) stickyOpenBtn.onclick = showOverlay;
         if (stickyDismissBtn) stickyDismissBtn.onclick = hideSticky;
 
-        const cancelButtons = [cancelImportBtn, stickyCancelBtn].filter(Boolean);
+        const cancelButtons = [dockCancelImportBtn, stickyCancelBtn].filter(Boolean);
         function cancelCurrentImport() {
             const tableName = currentUploadTable || sessionStorage.getItem('pendingImportTable') || '';
             if (!tableName) return;
@@ -962,16 +1009,20 @@ const routeConsultation = normalizeUrl(cfg?.dataset?.consultationUrl || '');
                 }
 
                 clearPendingImport();
+                stopImportPolling();
+                stopImportSse();
                 setSteps('failed');
                 const estimateDiv = document.getElementById('timeEstimate');
                 const spinner = document.getElementById('loadingSpinner');
                 if (spinner) spinner.style.display = 'none';
                 if (estimateDiv) estimateDiv.innerHTML = "<span class='text-red-600 font-bold'>Import annulé.</span>";
+                setImportTrackingActive(false);
+                hideOverlay();
                 hideSticky();
             });
         }
 
-        if (cancelImportBtn) cancelImportBtn.onclick = cancelCurrentImport;
+        if (dockCancelImportBtn) dockCancelImportBtn.onclick = cancelCurrentImport;
         if (stickyCancelBtn) stickyCancelBtn.onclick = cancelCurrentImport;
     </script>
 @endsection
