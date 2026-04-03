@@ -187,7 +187,7 @@ class StockImportController extends Controller
         $runId = (string) ($request->input('run_id') ?: str()->uuid());
         $fullPath = Storage::path($path);
 
-        Log::channel('import')->info('import.controller.mapping.confirmed', [
+        Log::channel('import')->info('impmiort.controller.mapping.confirmed', [
             'table' => $tableName,
             'heading_row' => $headingRow,
             'mapping' => $mapping,
