@@ -160,6 +160,21 @@ Puis redemarrer PHP-FPM (et Redis si necessaire cache/session).
 ## 8) Services runtime recommandes
 
 - Web: Nginx ou Apache + PHP-FPM
-- Redis: requis pour `CACHE_STORE=redis` (et recommande pour session/cache)
+- Redis: **uniquement si** vous utilisez `CACHE_STORE=redis` (ou `QUEUE_CONNECTION=redis`). Sinon, en local sans Redis, mettre `CACHE_STORE=file` et `QUEUE_CONNECTION=sync` dans `.env` pour eviter `RedisException: connection refused`.
 - Rotation logs applicatifs et monitoring erreurs
+
+### Erreur RedisException (connexion refusee)
+
+Causes typiques: `CACHE_STORE=redis` alors que le service Redis n'est pas demarre, ou mauvais `REDIS_HOST` / `REDIS_PORT`.
+
+**Correctif rapide (developpement / serveur sans Redis):** dans `.env` :
+
+```env
+CACHE_STORE=file
+QUEUE_CONNECTION=sync
+```
+
+Puis `php artisan optimize:clear`.
+
+**Correctif production:** installer et demarrer Redis (`redis-server`), puis `CACHE_STORE=redis` si vous souhaitez le cache en Redis.
 
