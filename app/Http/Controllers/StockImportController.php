@@ -76,10 +76,24 @@ class StockImportController extends Controller
             $runId = (string) str()->uuid();
             $this->logImportCreation($request, $runId, $tableName, $path, $file->getSize());
 
+            $mappingStartedAt = microtime(true);
+            Log::channel('import')->info('import.controller.mapping_detection.started', [
+                'run_id' => $runId,
+                'table' => $tableName,
+                'source_path' => $fullPath,
+                'max_lines' => 10,
+            ]);
             $detector = new FastHeaderDetector($mapper);
             $result = $detector->detect($fullPath, $requiredColumns, 10);
             $bestRowIndex = $result['bestRow'];
             $bestAnalysis = $result['bestAnalysis'];
+            Log::channel('import')->info('import.controller.mapping_detection.finished', [
+                'run_id' => $runId,
+                'table' => $tableName,
+                'duration_ms' => (int) round((microtime(true) - $mappingStartedAt) * 1000),
+                'best_row' => $bestRowIndex,
+                'best_score' => $result['bestScore'] ?? null,
+            ]);
 
             Log::channel('import')->info('import.controller.header.detected', [
                 'table' => $tableName,

@@ -16,6 +16,9 @@ return [
     // Active/desactive les logs de diagnostic par chunk.
     'enable_chunk_logs' => (bool) env('IMPORT_ENABLE_CHUNK_LOGS', true),
 
+    // Active des logs detailles pour l'etape de mappage (detection entetes).
+    'debug_mapping_logs' => (bool) env('IMPORT_DEBUG_MAPPING_LOGS', true),
+
     // Active/desactive le debug d'import (fichiers originaux/CSV nettoye + lignes skippees).
     'debug_enabled' => (bool) env('IMPORT_DEBUG_ENABLED', false),
 
