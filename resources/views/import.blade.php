@@ -103,7 +103,7 @@
 
     <!-- Sticky mini progress bar (shown when overlay is reduced) — au-dessus de l’overlay, sous la barre d’annulation -->
     <div id="importSticky"
-         class="hidden fixed bottom-20 left-1/2 -translate-x-1/2 z-[95] w-[min(46rem,calc(100vw-2rem))] bg-white border border-gray-200 shadow-lg rounded-xl px-4 py-3">
+         class="hidden fixed bottom-[7.5rem] left-1/2 -translate-x-1/2 z-[9998] w-[min(46rem,calc(100vw-2rem))] bg-white border border-gray-200 shadow-lg rounded-xl px-4 py-3">
         <div class="flex items-center justify-between gap-3">
             <div class="min-w-0">
                 <div class="text-sm font-bold text-gray-800 truncate">Import en cours</div>
@@ -126,15 +126,18 @@
         </div>
     </div>
 
-    <!-- Barre fixe : annulation toujours accessible (z-index max) -->
-    <div id="importCancelDock" class="hidden fixed bottom-0 left-0 right-0 z-[100] border-t-2 border-red-300 bg-white shadow-[0_-4px_24px_rgba(0,0,0,0.12)]">
-        <div class="max-w-[95rem] mx-auto px-4 py-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-            <p class="text-sm text-gray-700"><span class="font-semibold text-red-700">Import en cours</span> — vous pouvez annuler à tout moment (le traitement serveur peut s’arrêter dans les instants qui suivent).</p>
-            <div class="flex flex-wrap items-center gap-2 shrink-0 justify-end">
-                <button type="button" id="dockCancelImportBtn" class="px-5 py-2.5 rounded-lg bg-red-600 hover:bg-red-700 text-white font-bold text-sm shadow whitespace-nowrap">
-                    Annuler l'import
-                </button>
-            </div>
+    <!-- Barre fixe : bouton Annuler EN PREMIER (pleine largeur) pour éviter tout recadrage / hors écran -->
+    <div id="importCancelDock"
+         class="hidden fixed bottom-0 left-0 right-0 border-t-4 border-red-600 bg-red-50 shadow-[0_-6px_30px_rgba(0,0,0,0.15)]"
+         style="z-index: 9999;">
+        <div class="max-w-[95rem] mx-auto px-3 py-3 sm:px-4 flex flex-col gap-2">
+            <button type="button" id="dockCancelImportBtn"
+                    class="w-full min-h-[48px] px-4 py-3 rounded-lg bg-red-600 hover:bg-red-700 active:bg-red-800 text-white font-bold text-base shadow-md border-2 border-red-800">
+                Annuler l'import
+            </button>
+            <p class="text-center text-xs sm:text-sm text-gray-700 leading-snug">
+                <span class="font-semibold text-red-800">Import en cours</span> — vous pouvez interrompre le traitement côté serveur.
+            </p>
         </div>
     </div>
 
@@ -385,7 +388,7 @@
         function setImportTrackingActive(active) {
             const dock = document.getElementById('importCancelDock');
             if (dock) dock.classList.toggle('hidden', !active);
-            document.body.classList.toggle('pb-28', !!active);
+            document.body.classList.toggle('pb-40', !!active);
         }
 
         function stopImportPolling() {
