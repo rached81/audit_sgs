@@ -647,7 +647,14 @@ const routeConsultation = normalizeUrl(cfg?.dataset?.consultationUrl || '');
             const spinner = document.getElementById('loadingSpinner');
 
             showOverlay();
-            setSteps('mapping');
+            // Ne pas afficher "Mappage entête" ici : le suivi concerne le job (nettoyage/insertion).
+            setSteps('cleaning');
+            if (document.getElementById('stepCleaningMeta')) {
+                document.getElementById('stepCleaningMeta').innerText = 'Connexion au suivi…';
+            }
+            if (document.getElementById('timeEstimate')) {
+                document.getElementById('timeEstimate').innerText = 'Connexion au suivi de l\'import…';
+            }
 
             let isFinished = false;
             let consecutiveFailures = 0;
@@ -688,7 +695,17 @@ const routeConsultation = normalizeUrl(cfg?.dataset?.consultationUrl || '');
                         let stagePc = data.stage_percent ?? null;
 
                         const etaTxt = eta === null ? '' : (" • ETA ~ " + eta + "s");
-                        if (stage === 'cleaning') {
+                        if (status === 'idle') {
+                            setSteps('cleaning');
+                            if (estimateDiv) estimateDiv.innerText = "En attente du démarrage côté serveur…" + etaTxt;
+                            const clMeta = document.getElementById('stepCleaningMeta');
+                            if (clMeta) clMeta.innerText = "En attente…";
+                        } else if (stage === 'starting') {
+                            setSteps('cleaning');
+                            if (estimateDiv) estimateDiv.innerText = "Démarrage du traitement (nettoyage)…" + etaTxt;
+                            const clMeta = document.getElementById('stepCleaningMeta');
+                            if (clMeta) clMeta.innerText = "Préparation…";
+                        } else if (stage === 'cleaning') {
                             setSteps('cleaning');
                             const sp = stagePc === null ? '' : (" (" + stagePc + "%)");
                             if (estimateDiv) estimateDiv.innerText = "Nettoyage" + sp + " • Lignes prêtes: " + count + etaTxt;
@@ -704,8 +721,10 @@ const routeConsultation = normalizeUrl(cfg?.dataset?.consultationUrl || '');
                             if (insMeta) insMeta.innerText = count + " / " + total + etaTxt;
                             if (insRight) insRight.innerText = '—';
                         } else {
-                            setSteps('mapping');
-                            if (estimateDiv) estimateDiv.innerText = "Mappage entête..." + etaTxt;
+                            setSteps('cleaning');
+                            if (estimateDiv) estimateDiv.innerText = "Traitement en cours…" + etaTxt;
+                            const clMeta = document.getElementById('stepCleaningMeta');
+                            if (clMeta) clMeta.innerText = (stage || 'Étape') + "…";
                         }
 
                         const stickyBar = document.getElementById('stickyBar');
