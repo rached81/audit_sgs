@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Jobs\ImportStockJob;
 use App\Services\ColumnMapper;
 use App\Services\FastHeaderDetector;
 use App\Services\ImportOperationLogger;
@@ -386,71 +387,56 @@ class StockImportController extends Controller
                 }
             }
 
-            $mappingBase64 = base64_encode(json_encode($mapping, JSON_UNESCAPED_UNICODE));
-            $phpCliBinary = $this->resolvePhpCliBinary();
-            $spawnAckKey = "import_spawn_ack_{$runId}";
-            Cache::forget($spawnAckKey);
-            $artisanCmd =
-                escapeshellarg($phpCliBinary) . ' ' .
-                escapeshellarg(base_path('artisan')) . ' stock:run-import-job ' .
-                '--full-path=' . escapeshellarg($fullPath) . ' ' .
-                '--relative-path=' . escapeshellarg((string) ($relativePath ?? '')) . ' ' .
-                '--table=' . escapeshellarg($tableName) . ' ' .
-                '--heading-row=' . escapeshellarg((string) ((int) $headingRow)) . ' ' .
-                '--run-id=' . escapeshellarg($runId) . ' ' .
-                '--mapping=' . escapeshellarg($mappingBase64) . ' ' .
-                '--initiator-id=' . escapeshellarg((string) ($initiatorId ?? '')) . ' ' .
-                '--initiator-matricule=' . escapeshellarg($initiatorMatricule) . ' ' .
-                '--initiator-name=' . escapeshellarg($initiatorName) . ' ' .
-                '--initiator-ip=' . escapeshellarg($initiatorIp);
+            $queueConnection = (string) config('queue.default', 'sync');
+            $preferQueue = $queueConnection !== 'sync';
 
-            if (DIRECTORY_SEPARATOR === '\\') {
-                // Windows: fully detached background launch.
-                pclose(popen('start /B "" ' . $artisanCmd . ' > NUL 2>&1', 'r'));
+            if ($preferQueue) {
+                ImportStockJob::dispatch(
+                    $fullPath,
+                    $relativePath,
+                    $tableName,
+                    $mapping,
+                    (int) $headingRow,
+                    $runId,
+                    $initiatorId,
+                    $initiatorMatricule,
+                    $initiatorName,
+                    $initiatorIp
+                )->onQueue('imports');
+
+                Log::channel('import')->info('import.controller.job.dispatched_to_queue', [
+                    'run_id' => $runId,
+                    'table' => $tableName,
+                    'queue_connection' => $queueConnection,
+                    'queue_name' => 'imports',
+                ]);
             } else {
-                // Linux/macOS
-                exec($artisanCmd . ' > /dev/null 2>&1 &');
-            }
+                $mappingBase64 = base64_encode(json_encode($mapping, JSON_UNESCAPED_UNICODE));
+                $phpCliBinary = $this->resolvePhpCliBinary();
+                $artisanCmd =
+                    escapeshellarg($phpCliBinary) . ' ' .
+                    escapeshellarg(base_path('artisan')) . ' stock:run-import-job ' .
+                    '--full-path=' . escapeshellarg($fullPath) . ' ' .
+                    '--relative-path=' . escapeshellarg((string) ($relativePath ?? '')) . ' ' .
+                    '--table=' . escapeshellarg($tableName) . ' ' .
+                    '--heading-row=' . escapeshellarg((string) ((int) $headingRow)) . ' ' .
+                    '--run-id=' . escapeshellarg($runId) . ' ' .
+                    '--mapping=' . escapeshellarg($mappingBase64) . ' ' .
+                    '--initiator-id=' . escapeshellarg((string) ($initiatorId ?? '')) . ' ' .
+                    '--initiator-matricule=' . escapeshellarg($initiatorMatricule) . ' ' .
+                    '--initiator-name=' . escapeshellarg($initiatorName) . ' ' .
+                    '--initiator-ip=' . escapeshellarg($initiatorIp);
 
-            Log::channel('import')->info('import.controller.job.background_process.spawned', [
-                'run_id' => $runId,
-                'table' => $tableName,
-            ]);
-
-            // Fail fast if detached process did not actually start.
-            // Without this, UI can remain stuck forever at "starting".
-            $ackStarted = false;
-            $ackDeadline = microtime(true) + 3.0;
-            while (microtime(true) < $ackDeadline) {
-                if (Cache::get($spawnAckKey) !== null) {
-                    $ackStarted = true;
-                    break;
+                if (DIRECTORY_SEPARATOR === '\\') {
+                    pclose(popen('start /B "" ' . $artisanCmd . ' > NUL 2>&1', 'r'));
+                } else {
+                    exec($artisanCmd . ' > /dev/null 2>&1 &');
                 }
-                usleep(200000); // 200ms
-            }
 
-            if (!$ackStarted) {
-                $message = 'Le process d import en arriere-plan n a pas demarre (spawn non confirme). Verifier PHP CLI/exec/supervision.';
-                Cache::put("import_error_{$tableName}", $message, 3600);
-                Cache::put("import_status_{$tableName}", 'failed', 3600);
-                Cache::put("import_done_{$tableName}", false, 3600);
-                Cache::put("import_table_state_{$tableName}", [
+                Log::channel('import')->info('import.controller.job.background_process.spawned', [
                     'run_id' => $runId,
                     'table' => $tableName,
-                    'status' => 'failed',
-                    'stage' => 'starting',
-                    'error' => $message,
-                    'updated_at' => time(),
-                    'finished_at' => time(),
-                ], 3600);
-
-                Log::channel('import')->error('import.controller.job.background_process.not_acknowledged', [
-                    'run_id' => $runId,
-                    'table' => $tableName,
-                    'php_binary' => PHP_BINARY,
                     'php_cli_binary_used' => $phpCliBinary,
-                    'artisan' => base_path('artisan'),
-                    'disabled_functions' => (string) ini_get('disable_functions'),
                 ]);
             }
 

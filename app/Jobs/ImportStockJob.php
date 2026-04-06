@@ -5,13 +5,18 @@ namespace App\Jobs;
 use App\Exceptions\ImportCancelledException;
 use App\Services\ImportOperationLogger;
 use App\Services\StockCsvImporter;
+use Illuminate\Bus\Queueable;
+use Illuminate\Contracts\Queue\ShouldQueue;
+use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 
-class ImportStockJob
+class ImportStockJob implements ShouldQueue
 {
+    use Dispatchable;
+    use Queueable;
     use SerializesModels;
 
     public $fullPath;
