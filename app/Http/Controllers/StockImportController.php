@@ -387,10 +387,11 @@ class StockImportController extends Controller
             }
 
             $mappingBase64 = base64_encode(json_encode($mapping, JSON_UNESCAPED_UNICODE));
+            $phpCliBinary = $this->resolvePhpCliBinary();
             $spawnAckKey = "import_spawn_ack_{$runId}";
             Cache::forget($spawnAckKey);
             $artisanCmd =
-                escapeshellarg(PHP_BINARY) . ' ' .
+                escapeshellarg($phpCliBinary) . ' ' .
                 escapeshellarg(base_path('artisan')) . ' stock:run-import-job ' .
                 '--full-path=' . escapeshellarg($fullPath) . ' ' .
                 '--relative-path=' . escapeshellarg((string) ($relativePath ?? '')) . ' ' .
@@ -447,6 +448,7 @@ class StockImportController extends Controller
                     'run_id' => $runId,
                     'table' => $tableName,
                     'php_binary' => PHP_BINARY,
+                    'php_cli_binary_used' => $phpCliBinary,
                     'artisan' => base_path('artisan'),
                     'disabled_functions' => (string) ini_get('disable_functions'),
                 ]);
@@ -648,5 +650,31 @@ class StockImportController extends Controller
                 'original_name' => $request->file('file')?->getClientOriginalName(),
             ],
         ]);
+    }
+
+    private function resolvePhpCliBinary(): string
+    {
+        // Allow explicit override in production (e.g. IMPORT_PHP_CLI_BINARY=/usr/bin/php8.3).
+        $configured = trim((string) env('IMPORT_PHP_CLI_BINARY', ''));
+        if ($configured !== '' && @is_executable($configured)) {
+            return $configured;
+        }
+
+        $current = (string) PHP_BINARY;
+        $base = strtolower(basename($current));
+        $looksLikeFpm = str_contains($base, 'php-fpm') || str_contains($current, 'php-fpm');
+
+        if (!$looksLikeFpm && @is_executable($current)) {
+            return $current;
+        }
+
+        foreach (['/usr/bin/php', '/usr/bin/php8.3', '/usr/local/bin/php'] as $candidate) {
+            if (@is_executable($candidate)) {
+                return $candidate;
+            }
+        }
+
+        // Fallback: let shell resolve php from PATH.
+        return 'php';
     }
 }
