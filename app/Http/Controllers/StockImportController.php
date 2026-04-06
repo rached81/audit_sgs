@@ -387,6 +387,8 @@ class StockImportController extends Controller
             }
 
             $mappingBase64 = base64_encode(json_encode($mapping, JSON_UNESCAPED_UNICODE));
+            $spawnAckKey = "import_spawn_ack_{$runId}";
+            Cache::forget($spawnAckKey);
             $artisanCmd =
                 escapeshellarg(PHP_BINARY) . ' ' .
                 escapeshellarg(base_path('artisan')) . ' stock:run-import-job ' .
@@ -413,6 +415,42 @@ class StockImportController extends Controller
                 'run_id' => $runId,
                 'table' => $tableName,
             ]);
+
+            // Fail fast if detached process did not actually start.
+            // Without this, UI can remain stuck forever at "starting".
+            $ackStarted = false;
+            $ackDeadline = microtime(true) + 3.0;
+            while (microtime(true) < $ackDeadline) {
+                if (Cache::get($spawnAckKey) !== null) {
+                    $ackStarted = true;
+                    break;
+                }
+                usleep(200000); // 200ms
+            }
+
+            if (!$ackStarted) {
+                $message = 'Le process d import en arriere-plan n a pas demarre (spawn non confirme). Verifier PHP CLI/exec/supervision.';
+                Cache::put("import_error_{$tableName}", $message, 3600);
+                Cache::put("import_status_{$tableName}", 'failed', 3600);
+                Cache::put("import_done_{$tableName}", false, 3600);
+                Cache::put("import_table_state_{$tableName}", [
+                    'run_id' => $runId,
+                    'table' => $tableName,
+                    'status' => 'failed',
+                    'stage' => 'starting',
+                    'error' => $message,
+                    'updated_at' => time(),
+                    'finished_at' => time(),
+                ], 3600);
+
+                Log::channel('import')->error('import.controller.job.background_process.not_acknowledged', [
+                    'run_id' => $runId,
+                    'table' => $tableName,
+                    'php_binary' => PHP_BINARY,
+                    'artisan' => base_path('artisan'),
+                    'disabled_functions' => (string) ini_get('disable_functions'),
+                ]);
+            }
 
             if ($asJson) {
                 return response()->json([

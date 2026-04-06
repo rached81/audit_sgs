@@ -64,6 +64,11 @@ class RunImportStockJob extends Command
         }
 
         try {
+            Cache::put("import_spawn_ack_{$runId}", [
+                'started_at' => time(),
+                'pid' => function_exists('getmypid') ? getmypid() : null,
+            ], 600);
+
             Log::channel('import')->info('import.command.run_job.started', [
                 'run_id' => $runId,
                 'table' => $tableName,
