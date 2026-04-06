@@ -56,6 +56,13 @@ class StockImportController extends Controller
                 'table' => $tableName,
             ]);
 
+            if ($request->ajax() || $request->expectsJson()) {
+                return response()->json([
+                    'ok' => false,
+                    'message' => "La table '$tableName' existe deja et contient des donnees.",
+                ], 422);
+            }
+
             return back()->withErrors([
                 'table_name' => "La table '$tableName' existe deja et contient des donnees.",
             ]);
