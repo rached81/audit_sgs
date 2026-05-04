@@ -251,17 +251,7 @@ class StockImportController extends Controller
         return response()->json(['ok' => true]);
     }
 
-    private function doImport(
-        $fullPath,
-        $tableName,
-        $mapping,
-        $headingRow = 1,
-        $relativePath = null,
-        bool $asJson = false,
-        ?string $runId = null,
-        ?Request $request = null
-    )
-    {
+
         @set_time_limit(0);
 
         Log::channel('import')->info('import.controller.pipeline.start', [
@@ -301,12 +291,15 @@ class StockImportController extends Controller
 
                 if ($existingRows > 0) {
                     if ($asJson) {
-                        return response()->json([
+                        return response()
+                        ->json([
                             'ok' => false,
                             'message' => "Schema incompatible sur $tableName: colonne ARTICLE numerique et table non vide. Videz ou recreez la table avant import.",
                         ], 422);
                     }
-                    return redirect()->route('import.form')->withErrors([
+                    return redirect()
+                    ->route('import.form')
+                    ->withErrors([
                         'table_name' => "Schema incompatible sur $tableName: colonne ARTICLE numerique et table non vide. Videz ou recreez la table avant import.",
                     ]);
                 }
@@ -446,7 +439,7 @@ class StockImportController extends Controller
                     'table_name' => $tableName,
                     'run_id' => '',
                     'status_url' => route('import.status', [], false),
-                    'events_url' => route('import.events', [], false),
+                    // 'events_url' => route('import.events', [], false),
                 ]);
             }
 
@@ -471,70 +464,6 @@ class StockImportController extends Controller
         }
     }
 
-    public function events(Request $request): StreamedResponse
-    {
-        $runId = (string) $request->query('runId', '');
-        if ($runId === '') {
-            abort(400, 'Missing runId');
-        }
-
-        $key = "import_run_{$runId}";
-
-        return Response::stream(function () use ($key) {
-            @set_time_limit(0);
-
-            $lastJson = null;
-            $start = time();
-
-            while (true) {
-                $state = Cache::get($key);
-                if (!is_array($state)) {
-                    $state = [
-                        'status' => 'running',
-                        'stage' => 'starting',
-                        'overall_percent' => 0,
-                        'stage_percent' => 0,
-                        'processed' => 0,
-                        'total' => 0,
-                        'eta_seconds' => null,
-                        'updated_at' => time(),
-                    ];
-                }
-
-                $json = json_encode($state, JSON_UNESCAPED_SLASHES);
-                if ($json !== $lastJson) {
-                    echo "event: progress\n";
-                    echo "data: {$json}\n\n";
-                    $lastJson = $json;
-                } else {
-                    // keep-alive to avoid proxies closing the connection
-                    echo ": ping\n\n";
-                }
-
-                if (function_exists('ob_flush')) {
-                    @ob_flush();
-                }
-                @flush();
-
-                $status = (string) ($state['status'] ?? 'running');
-                if (in_array($status, ['done', 'failed'], true)) {
-                    break;
-                }
-
-                // safety: stop after 2 hours
-                if ((time() - $start) > 7200) {
-                    break;
-                }
-
-                usleep(750000); // ~0.75s
-            }
-        }, 200, [
-            'Content-Type' => 'text/event-stream',
-            'Cache-Control' => 'no-cache, no-store, must-revalidate',
-            'Connection' => 'keep-alive',
-            'X-Accel-Buffering' => 'no',
-        ]);
-    }
 
     public function checkStatus(Request $request)
     {
