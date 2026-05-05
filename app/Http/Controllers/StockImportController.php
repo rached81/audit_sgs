@@ -15,6 +15,7 @@ use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Response;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class StockImportController extends Controller
@@ -117,53 +118,40 @@ class StockImportController extends Controller
                 $fileHeaders
             )));
 
-            $perfectMatch = true;
-            foreach ($requiredColumns as $col) {
-                if (($bestAnalysis['confidence'][$col] ?? 0) < 90) {
-                    $perfectMatch = false;
-                    break;
-                }
-            }
-
-            if ($perfectMatch) {
-                Log::channel('import')->info('import.controller.mapping.auto_confirmed', [
+            [$strictOk, $strictMessage] = $this->validateStrictHeaders($fileHeaders, $requiredColumns);
+            if (!$strictOk) {
+                Log::channel('import')->warning('import.controller.header.strict_validation_failed', [
                     'table' => $tableName,
                     'heading_row' => $bestRowIndex,
-                    'mapping' => $bestAnalysis['mapping'],
+                    'headers' => $fileHeaders,
+                    'message' => $strictMessage,
                 ]);
 
-                return $this->doImport(
-                    $fullPath,
-                    $tableName,
-                    $bestAnalysis['mapping'],
-                    $bestRowIndex,
-                    $path,
-                    $request->ajax() || $request->expectsJson(),
-                    $runId,
-                    $request
-                );
+                if ($request->ajax() || $request->expectsJson()) {
+                    return response()->json(['ok' => false, 'message' => $strictMessage], 422);
+                }
+
+                Storage::delete($path);
+                return back()->withErrors(['file' => $strictMessage]);
             }
 
-            Log::channel('import')->info('import.controller.mapping.manual_required', [
+            $strictMapping = $this->buildStrictMapping($fileHeaders, $requiredColumns);
+            Log::channel('import')->info('import.controller.mapping.strict_auto_confirmed', [
                 'table' => $tableName,
                 'heading_row' => $bestRowIndex,
-                'mapping' => $bestAnalysis['mapping'] ?? [],
-                'confidence' => $bestAnalysis['confidence'] ?? [],
-                'headers' => $fileHeaders,
+                'mapping' => $strictMapping,
             ]);
 
-            return view('import_mapping', [
-                'analysis' => $bestAnalysis,
-                'file_headers' => $fileHeaders,
-                'file_path' => $path,
-                'table_name' => $tableName,
-                'required_columns' => $requiredColumns,
-                'heading_row' => $bestRowIndex,
-                'annee' => $annee,
-                'programme' => $programme,
-                'reseau' => $reseau,
-                'run_id' => $runId,
-            ]);
+            return $this->doImport(
+                $fullPath,
+                $tableName,
+                $strictMapping,
+                $bestRowIndex,
+                $path,
+                $request->ajax() || $request->expectsJson(),
+                $runId,
+                $request
+            );
         } catch (\Exception $e) {
             Storage::delete($path);
 
@@ -251,7 +239,44 @@ class StockImportController extends Controller
         return response()->json(['ok' => true]);
     }
 
+    public function fixImportCache(Request $request)
+    {
+        $issues = $this->detectImportCacheIssues();
+        if ($issues === []) {
+            return back()->with('success', 'Aucun cache d\'import bloquant à corriger.');
+        }
 
+        foreach ($issues as $tableName) {
+            Cache::forget("import_total_{$tableName}");
+            Cache::forget("import_processed_{$tableName}");
+            Cache::forget("import_error_{$tableName}");
+            Cache::forget("import_status_{$tableName}");
+            Cache::forget("import_done_{$tableName}");
+            Cache::forget("import_cancel_{$tableName}");
+            Cache::forget("import_table_state_{$tableName}");
+        }
+
+        Log::channel('import')->warning('import.cache.fix.executed', [
+            'tables' => $issues,
+            'count' => count($issues),
+            'by_user_id' => $request->user()?->id,
+            'by_user_matricule' => $request->user()?->matricule,
+        ]);
+
+        return back()->with('success', 'Correction cache appliquée sur ' . count($issues) . ' import(s) bloqué(s).');
+    }
+
+    private function doImport(
+        $fullPath,
+        $tableName,
+        $mapping,
+        $headingRow = 1,
+        $relativePath = null,
+        bool $asJson = false,
+        ?string $runId = null,
+        ?Request $request = null
+    )
+    {
         @set_time_limit(0);
 
         Log::channel('import')->info('import.controller.pipeline.start', [
@@ -437,9 +462,8 @@ class StockImportController extends Controller
                 return response()->json([
                     'ok' => true,
                     'table_name' => $tableName,
-                    'run_id' => '',
+                    'run_id' => $runId,
                     'status_url' => route('import.status', [], false),
-                    // 'events_url' => route('import.events', [], false),
                 ]);
             }
 
@@ -464,9 +488,88 @@ class StockImportController extends Controller
         }
     }
 
+    public function _events(Request $request): StreamedResponse
+    {
+        $runId = (string) $request->query('runId', '');
+        if ($runId === '') {
+            abort(400, 'Missing runId');
+        }
+
+        $key = "import_run_{$runId}";
+
+        return Response::stream(function () use ($key) {
+            @set_time_limit(0);
+
+            $lastJson = null;
+            $start = time();
+
+            while (true) {
+                $state = Cache::get($key);
+                if (!is_array($state)) {
+                    $state = [
+                        'status' => 'running',
+                        'stage' => 'starting',
+                        'overall_percent' => 0,
+                        'stage_percent' => 0,
+                        'processed' => 0,
+                        'total' => 0,
+                        'eta_seconds' => null,
+                        'updated_at' => time(),
+                    ];
+                }
+
+                $json = json_encode($state, JSON_UNESCAPED_SLASHES);
+                if ($json !== $lastJson) {
+                    echo "event: progress\n";
+                    echo "data: {$json}\n\n";
+                    $lastJson = $json;
+                } else {
+                    // keep-alive to avoid proxies closing the connection
+                    echo ": ping\n\n";
+                }
+
+                if (function_exists('ob_flush')) {
+                    @ob_flush();
+                }
+                @flush();
+
+                $status = (string) ($state['status'] ?? 'running');
+                if (in_array($status, ['done', 'failed'], true)) {
+                    break;
+                }
+
+                // safety: stop after 2 hours
+                if ((time() - $start) > 7200) {
+                    break;
+                }
+
+                usleep(750000); // ~0.75s
+            }
+        }, 200, [
+            'Content-Type' => 'text/event-stream',
+            'Cache-Control' => 'no-cache, no-store, must-revalidate',
+            'Connection' => 'keep-alive',
+            'X-Accel-Buffering' => 'no',
+        ]);
+    }
 
     public function checkStatus(Request $request)
     {
+        $runId = (string) $request->input('run_id', '');
+        if ($runId !== '') {
+            $runState = Cache::get("import_run_{$runId}");
+            if (is_array($runState)) {
+                return response()->json([
+                    'count' => (int) ($runState['processed'] ?? 0),
+                    'percent' => (int) ($runState['overall_percent'] ?? 0),
+                    'total' => (int) ($runState['total'] ?? 0),
+                    'status' => (string) ($runState['status'] ?? 'running'),
+                    'error' => $runState['error'] ?? null,
+                ]);
+            }
+            return response()->json(['count' => 0, 'percent' => 0, 'total' => 0, 'status' => 'idle', 'error' => null]);
+        }
+
         $tableName = $request->input('table');
         if (!$tableName) {
             return response()->json(['count' => 0, 'percent' => 0, 'total' => 0, 'status' => 'idle', 'error' => null]);
@@ -528,6 +631,7 @@ class StockImportController extends Controller
                 'eta_seconds' => $etaSeconds,
                 'stage_percent' => $stagePercent,
                 'overall_percent' => $overallPercent,
+                'skipped_csv_path' => $tableState['skipped_csv_path'] ?? null,
             ]);
         }
 
@@ -567,6 +671,59 @@ class StockImportController extends Controller
         ]);
     }
 
+    private function normalizeHeader(string $header): string
+    {
+        $h = trim(Str::ascii($header));
+        $h = mb_strtolower($h, 'UTF-8');
+        return preg_replace('/[^a-z0-9]+/u', '', $h) ?? '';
+    }
+
+    private function validateStrictHeaders(array $fileHeaders, array $requiredColumns): array
+    {
+        $normalizedFile = [];
+        foreach ($fileHeaders as $h) {
+            $n = $this->normalizeHeader((string) $h);
+            if ($n !== '') {
+                $normalizedFile[] = $n;
+            }
+        }
+        $normalizedFile = array_values(array_unique($normalizedFile));
+
+        $normalizedRequired = array_values(array_unique(array_map(
+            fn(string $c) => $this->normalizeHeader($c),
+            $requiredColumns
+        )));
+
+        sort($normalizedFile);
+        sort($normalizedRequired);
+
+        if ($normalizedFile !== $normalizedRequired) {
+            $requiredLabel = strtoupper(implode(', ', $requiredColumns));
+            $foundLabel = implode(', ', $fileHeaders);
+            $msg = "Entêtes invalides. Colonnes attendues (strictes, casse non sensible): {$requiredLabel}. Trouvées: {$foundLabel}";
+            return [false, $msg];
+        }
+
+        return [true, null];
+    }
+
+    private function buildStrictMapping(array $fileHeaders, array $requiredColumns): array
+    {
+        $byNormalized = [];
+        foreach ($fileHeaders as $h) {
+            $n = $this->normalizeHeader((string) $h);
+            if ($n !== '' && !isset($byNormalized[$n])) {
+                $byNormalized[$n] = (string) $h;
+            }
+        }
+
+        $mapping = [];
+        foreach ($requiredColumns as $col) {
+            $mapping[$col] = $byNormalized[$this->normalizeHeader($col)] ?? $col;
+        }
+        return $mapping;
+    }
+
     private function resolvePhpCliBinary(): string
     {
         // Allow explicit override in production (e.g. IMPORT_PHP_CLI_BINARY=/usr/bin/php8.3).
@@ -591,5 +748,58 @@ class StockImportController extends Controller
 
         // Fallback: let shell resolve php from PATH.
         return 'php';
+    }
+
+    public static function hasFixableImportCache(): bool
+    {
+        return app(self::class)->detectImportCacheIssues() !== [];
+    }
+
+    private function detectImportCacheIssues(): array
+    {
+        $tablesRaw = DB::select('SHOW TABLES');
+        $dbName = DB::getDatabaseName();
+        $key = "Tables_in_" . $dbName;
+
+        $issues = [];
+        foreach ($tablesRaw as $tableObj) {
+            $tableName = (string) ($tableObj->$key ?? $tableObj->{'Tables_in_audit_sgs'} ?? reset($tableObj));
+            if (stripos($tableName, 'RES_') !== 0) {
+                continue;
+            }
+
+            $status = Cache::get("import_status_{$tableName}");
+            $tableState = Cache::get("import_table_state_{$tableName}");
+            $updatedAt = is_array($tableState) ? (int) ($tableState['updated_at'] ?? 0) : 0;
+            $ageSeconds = $updatedAt > 0 ? (time() - $updatedAt) : null;
+
+            // Running imports are never auto-fixed unless stale for long time.
+            if ($status === 'running' && ($ageSeconds === null || $ageSeconds < 600)) {
+                continue;
+            }
+
+            $hasAnyImportCache =
+                Cache::has("import_total_{$tableName}") ||
+                Cache::has("import_processed_{$tableName}") ||
+                Cache::has("import_error_{$tableName}") ||
+                Cache::has("import_status_{$tableName}") ||
+                Cache::has("import_done_{$tableName}") ||
+                Cache::has("import_cancel_{$tableName}") ||
+                Cache::has("import_table_state_{$tableName}");
+
+            if (!$hasAnyImportCache) {
+                continue;
+            }
+
+            $isProblematic =
+                in_array((string) $status, ['failed', 'cancelled'], true) ||
+                (($status === 'running') && $ageSeconds !== null && $ageSeconds >= 600);
+
+            if ($isProblematic) {
+                $issues[] = $tableName;
+            }
+        }
+
+        return array_values(array_unique($issues));
     }
 }

@@ -5,7 +5,7 @@
     <div id="importSuccessBanner" class="hidden mb-6 rounded-lg bg-green-100 border border-green-300 text-green-800 px-4 py-3 text-center font-semibold" role="status"></div>
 
     <!-- Loading Overlay (sous la barre d'annulation fixe) -->
-        <div id="loadingOverlay" class="fixed inset-0 bg-black/50 z-[90] flex items-center justify-center hidden overflow-y-auto py-8">
+        <div id="loadingOverlay" class="fixed inset-0 bg-black/50 z-[99999] flex items-center justify-center hidden overflow-y-auto py-8">
         <div class="bg-white p-8 rounded-lg shadow-xl text-center max-w-md mx-4 w-full relative max-h-[min(90vh,40rem)] overflow-y-auto">
             <div class="absolute top-3 right-3 flex items-center gap-2 z-10">
                 <button id="minimizeOverlayBtn" type="button"
@@ -29,57 +29,7 @@
             <div id="progressText" class="text-sm text-indigo-700 font-bold mb-4">0%</div>
 
             <p id="infoText" class="text-gray-600 mb-4">Veuillez patienter, ne fermez pas la page.</p>
-            <p class="text-xs text-gray-500 mb-4">Pour interrompre l’import, utilisez le bouton rouge <strong>en bas d’écran</strong> (toujours visible).</p>
-
-            <!-- Steps (vertical) -->
-            <div class="mb-4 text-left">
-                <div class="text-xs font-bold text-gray-500 mb-2">Étapes</div>
-                <div class="space-y-2">
-                    <div id="stepUploadRow" class="flex items-center justify-between gap-3 rounded-lg border border-gray-200 px-3 py-2">
-                        <div class="min-w-0 flex items-center gap-2">
-                            <span id="stepUploadIcon" class="shrink-0 h-5 w-5 rounded-full bg-indigo-100 text-indigo-700 grid place-items-center font-extrabold">•</span>
-                            <div class="min-w-0">
-                                <div class="text-sm font-semibold text-gray-800">Upload</div>
-                                <div id="stepUploadMeta" class="text-xs text-gray-500 truncate">En attente…</div>
-                            </div>
-                        </div>
-                        <div id="stepUploadRight" class="shrink-0 text-xs font-bold text-gray-600">0%</div>
-                    </div>
-
-                    <div id="stepMapRow" class="flex items-center justify-between gap-3 rounded-lg border border-gray-200 px-3 py-2">
-                        <div class="min-w-0 flex items-center gap-2">
-                            <span id="stepMapIcon" class="shrink-0 h-5 w-5 rounded-full bg-gray-100 text-gray-500 grid place-items-center font-extrabold">•</span>
-                            <div class="min-w-0">
-                                <div class="text-sm font-semibold text-gray-800">Mappage entête</div>
-                                <div id="stepMapMeta" class="text-xs text-gray-500 truncate">Analyse des colonnes…</div>
-                            </div>
-                        </div>
-                        <div id="stepMapRight" class="shrink-0 text-xs font-bold text-gray-600">—</div>
-                    </div>
-
-                    <div id="stepCleaningRow" class="flex items-center justify-between gap-3 rounded-lg border border-gray-200 px-3 py-2">
-                        <div class="min-w-0 flex items-center gap-2">
-                            <span id="stepCleaningIcon" class="shrink-0 h-5 w-5 rounded-full bg-gray-100 text-gray-500 grid place-items-center font-extrabold">•</span>
-                            <div class="min-w-0">
-                                <div class="text-sm font-semibold text-gray-800">Nettoyage</div>
-                                <div id="stepCleaningMeta" class="text-xs text-gray-500 truncate">En attente…</div>
-                            </div>
-                        </div>
-                        <div id="stepCleaningRight" class="shrink-0 text-xs font-bold text-gray-600">0%</div>
-                    </div>
-
-                    <div id="stepInsertingRow" class="flex items-center justify-between gap-3 rounded-lg border border-gray-200 px-3 py-2">
-                        <div class="min-w-0 flex items-center gap-2">
-                            <span id="stepInsertingIcon" class="shrink-0 h-5 w-5 rounded-full bg-gray-100 text-gray-500 grid place-items-center font-extrabold">•</span>
-                            <div class="min-w-0">
-                                <div class="text-sm font-semibold text-gray-800">Insertion</div>
-                                <div id="stepInsertingMeta" class="text-xs text-gray-500 truncate">En attente…</div>
-                            </div>
-                        </div>
-                        <div id="stepInsertingRight" class="shrink-0 text-xs font-bold text-gray-600">0%</div>
-                    </div>
-                </div>
-            </div>
+            <p class="text-xs text-gray-500 mb-4">Suivi simplifié: une seule barre de progression.</p>
 
             <div id="timeEstimate" class="text-sm font-semibold text-indigo-600 bg-indigo-50 py-2 px-4 rounded">
                 Initialisation...
@@ -94,9 +44,7 @@
     <div id="importProgressConfig"
          data-run-id="{{ session('import_run_id') }}"
          data-table="{{ session('import_table') }}"
-         data-events-url="{{ route('import.events', [], false) }}"
          data-status-url="{{ route('import.status', [], false) }}"
-         data-cancel-url="{{ route('import.cancel', [], false) }}"
          data-login-url="{{ route('login', [], false) }}"
          data-consultation-url="{{ route('consultation.index', [], false) }}"
          class="hidden"></div>
@@ -113,9 +61,6 @@
                 <button id="stickyOpenBtn" type="button" class="px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold whitespace-nowrap">
                     Ouvrir
                 </button>
-                <button id="stickyCancelBtn" type="button" class="px-3 py-1.5 rounded-lg bg-red-600 hover:bg-red-700 text-white text-sm font-semibold whitespace-nowrap">
-                    Annuler
-                </button>
                 <button id="stickyDismissBtn" type="button" class="px-3 py-1.5 rounded-lg bg-gray-100 hover:bg-gray-200 text-gray-700 text-sm font-semibold whitespace-nowrap">
                     Masquer
                 </button>
@@ -126,20 +71,6 @@
         </div>
     </div>
 
-    <!-- Barre fixe : bouton Annuler EN PREMIER (pleine largeur) pour éviter tout recadrage / hors écran -->
-    <div id="importCancelDock"
-         class="hidden fixed bottom-0 left-0 right-0 border-t-4 border-red-600 bg-red-50 shadow-[0_-6px_30px_rgba(0,0,0,0.15)]"
-         style="z-index: 9999;">
-        <div class="max-w-[95rem] mx-auto px-3 py-3 sm:px-4 flex flex-col gap-2">
-            <button type="button" id="dockCancelImportBtn"
-                    class="w-full min-h-[48px] px-4 py-3 rounded-lg bg-red-600 hover:bg-red-700 active:bg-red-800 text-white font-bold text-base shadow-md border-2 border-red-800">
-                Annuler l'import
-            </button>
-            <p class="text-center text-xs sm:text-sm text-gray-700 leading-snug">
-                <span class="font-semibold text-red-800">Import en cours</span> — vous pouvez interrompre le traitement côté serveur.
-            </p>
-        </div>
-    </div>
 
     <h1 class="text-3xl font-bold mb-8 text-center text-indigo-700">Import des Stocks</h1>
 
@@ -233,7 +164,7 @@
 
                 <div class="mb-6">
                     <label for="file" class="block text-gray-700 font-bold mb-2">Fichier Excel</label>
-                    <div class="relative border-2 border-dashed border-gray-300 rounded-lg p-6 hover:bg-gray-50 transition-colors text-center cursor-pointer" onclick="document.getElementById('file').click()">
+                    <div class="relative z-0 border-2 border-dashed border-gray-300 rounded-lg p-6 hover:bg-gray-50 transition-colors text-center cursor-pointer" onclick="document.getElementById('file').click()">
                         <input type="file" name="file" id="file" class="hidden" accept=".xlsx,.xls,.csv" onchange="handleFileSelect(this)">
                         <svg class="mx-auto h-12 w-12 text-gray-400" stroke="currentColor" fill="none" viewBox="0 0 48 48" aria-hidden="true">
                             <path d="M28 8H12a4 4 0 00-4 4v20m32-12v8m0 0v8a4 4 0 01-4 4H12a4 4 0 01-4-4v-4m32-4l-3.172-3.172a4 4 0 00-5.656 0L28 28M8 32l9.172-9.172a4 4 0 015.656 0L28 28m0 0l4 4m4-24h8m-4-4v8m-12 4h.02" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
@@ -254,819 +185,252 @@
 
 @section('scripts')
     <script>
+        const importForm = document.getElementById('importForm');
+        const overlay = document.getElementById('loadingOverlay');
+        const sticky = document.getElementById('importSticky');
+        const cfg = document.getElementById('importProgressConfig');
+        const routeStatus = cfg?.dataset?.statusUrl || '';
+        const routeLogin = cfg?.dataset?.loginUrl || '/login';
+        const routeConsultation = cfg?.dataset?.consultationUrl || '';
+        const importTableFromSession = cfg?.dataset?.table || '';
+
+        const ETA_HISTORY_KEY = 'import_eta_history_v2';
         let selectedFileSize = 0;
+        let currentUploadTable = '';
+        let currentUploadRunId = '';
+        let pollTimer = null;
+        let trackingStartAt = null;
 
-        function setStepRowState(rowId, iconId, state) {
-            const row = document.getElementById(rowId);
-            const icon = document.getElementById(iconId);
-            if (!row || !icon) return;
-
-            const baseRow = "flex items-center justify-between gap-3 rounded-lg border px-3 py-2";
-            const baseIcon = "shrink-0 h-5 w-5 rounded-full grid place-items-center font-extrabold";
-
-            if (state === 'active') {
-                row.className = baseRow + " border-indigo-200 bg-indigo-50";
-                icon.className = baseIcon + " bg-indigo-100 text-indigo-700";
-                icon.innerText = "…";
-                return;
-            }
-            if (state === 'done') {
-                row.className = baseRow + " border-green-200 bg-green-50";
-                icon.className = baseIcon + " bg-green-100 text-green-700";
-                icon.innerText = "✓";
-                return;
-            }
-            if (state === 'failed') {
-                row.className = baseRow + " border-red-200 bg-red-50";
-                icon.className = baseIcon + " bg-red-100 text-red-700";
-                icon.innerText = "!";
-                return;
-            }
-            // idle
-            row.className = baseRow + " border-gray-200 bg-white";
-            icon.className = baseIcon + " bg-gray-100 text-gray-500";
-            icon.innerText = "•";
+        function importTypeFromTable(tableName) {
+            const t = String(tableName || '').toUpperCase();
+            if (t.includes('_EF_')) return 'EF';
+            if (t.includes('_GD_')) return 'GD';
+            return 'GENERIC';
+        }
+        function readHistory() { try { return JSON.parse(localStorage.getItem(ETA_HISTORY_KEY) || '[]'); } catch { return []; } }
+        function saveHistory(items) { localStorage.setItem(ETA_HISTORY_KEY, JSON.stringify(items.slice(-40))); }
+        function pushHistory(type, seconds) {
+            const s = Number(seconds || 0);
+            if (!Number.isFinite(s) || s < 5) return;
+            const h = readHistory();
+            h.push({ type, seconds: s, at: Date.now() });
+            saveHistory(h);
+        }
+        function etaFromHistory(type, percent) {
+            const p = Math.max(0, Math.min(100, Number(percent || 0)));
+            const list = readHistory().filter(x => x?.type === type || x?.type === 'GENERIC');
+            if (!list.length) return null;
+            const avg = list.reduce((a, b) => a + (Number(b.seconds) || 0), 0) / list.length;
+            if (avg <= 0) return null;
+            if (p <= 0) return Math.round(avg);
+            return Math.max(0, Math.round(avg * (1 - p / 100)));
         }
 
-        function setSteps(active) {
-            // active: starting|mapping|cleaning|inserting|done|failed
-            if (active === 'starting') {
-                setStepRowState('stepUploadRow', 'stepUploadIcon', 'active');
-                setStepRowState('stepMapRow', 'stepMapIcon', 'idle');
-                setStepRowState('stepCleaningRow', 'stepCleaningIcon', 'idle');
-                setStepRowState('stepInsertingRow', 'stepInsertingIcon', 'idle');
-                return;
-            }
-            if (active === 'mapping') {
-                setStepRowState('stepUploadRow', 'stepUploadIcon', 'done');
-                setStepRowState('stepMapRow', 'stepMapIcon', 'active');
-                setStepRowState('stepCleaningRow', 'stepCleaningIcon', 'idle');
-                setStepRowState('stepInsertingRow', 'stepInsertingIcon', 'idle');
-                return;
-            }
-            if (active === 'cleaning') {
-                setStepRowState('stepUploadRow', 'stepUploadIcon', 'done');
-                setStepRowState('stepMapRow', 'stepMapIcon', 'done');
-                setStepRowState('stepCleaningRow', 'stepCleaningIcon', 'active');
-                setStepRowState('stepInsertingRow', 'stepInsertingIcon', 'idle');
-                return;
-            }
-            if (active === 'inserting') {
-                setStepRowState('stepUploadRow', 'stepUploadIcon', 'done');
-                setStepRowState('stepMapRow', 'stepMapIcon', 'done');
-                setStepRowState('stepCleaningRow', 'stepCleaningIcon', 'done');
-                setStepRowState('stepInsertingRow', 'stepInsertingIcon', 'active');
-                return;
-            }
-            if (active === 'done') {
-                setStepRowState('stepUploadRow', 'stepUploadIcon', 'done');
-                setStepRowState('stepMapRow', 'stepMapIcon', 'done');
-                setStepRowState('stepCleaningRow', 'stepCleaningIcon', 'done');
-                setStepRowState('stepInsertingRow', 'stepInsertingIcon', 'done');
-                return;
-            }
-            if (active === 'failed') {
-                setStepRowState('stepUploadRow', 'stepUploadIcon', 'done');
-                setStepRowState('stepMapRow', 'stepMapIcon', 'done');
-                setStepRowState('stepCleaningRow', 'stepCleaningIcon', 'done');
-                setStepRowState('stepInsertingRow', 'stepInsertingIcon', 'failed');
-                return;
-            }
+        function fmtDur(s) {
+            if (s === null || s === undefined) return '';
+            const n = Math.max(0, Math.round(Number(s)));
+            const m = Math.floor(n / 60);
+            const r = n % 60;
+            return m > 0 ? `${m}m ${r}s` : `${r}s`;
         }
 
-        function showSticky() {
-            const sticky = document.getElementById('importSticky');
-            if (sticky) sticky.classList.remove('hidden');
-        }
-
-        function hideSticky() {
-            const sticky = document.getElementById('importSticky');
-            if (sticky) sticky.classList.add('hidden');
+        function setMainFormInteractive(active) {
+            const card = document.querySelector('.bg-white.shadow-xl.rounded-lg.overflow-hidden.md\\:flex');
+            if (!card) return;
+            card.classList.toggle('pointer-events-none', !active);
+            card.classList.toggle('select-none', !active);
         }
 
         function showOverlay() {
-            const overlay = document.getElementById('loadingOverlay');
-            if (overlay) overlay.classList.remove('hidden');
-            hideSticky();
+            overlay?.classList.remove('hidden');
+            sticky?.classList.add('hidden');
+            setMainFormInteractive(false);
         }
-
         function hideOverlay() {
-            const overlay = document.getElementById('loadingOverlay');
-            if (overlay) overlay.classList.add('hidden');
-            showSticky();
+            overlay?.classList.add('hidden');
+            sticky?.classList.remove('hidden');
+            setMainFormInteractive(true);
+        }
+        function hideSticky() { sticky?.classList.add('hidden'); }
+
+        function setProgress(percent, text, stickyText) {
+            const p = Math.max(0, Math.min(100, Number(percent || 0)));
+            const progressBar = document.getElementById('progressBar');
+            const progressText = document.getElementById('progressText');
+            const estimateDiv = document.getElementById('timeEstimate');
+            const stickyBar = document.getElementById('stickyBar');
+            const stickyTextEl = document.getElementById('stickyText');
+            if (progressBar) progressBar.style.width = p + '%';
+            if (progressText) progressText.innerText = Math.round(p) + '%';
+            if (estimateDiv && text) estimateDiv.innerText = text;
+            if (stickyBar) stickyBar.style.width = p + '%';
+            if (stickyTextEl && stickyText) stickyTextEl.innerText = stickyText;
         }
 
         function handleFileSelect(input) {
             if (input.files && input.files[0]) {
                 document.getElementById('filename').innerText = input.files[0].name;
-                selectedFileSize = input.files[0].size; // in bytes
+                selectedFileSize = input.files[0].size;
             }
         }
 
-        function formatBytes(bytes) {
-            const b = Number(bytes || 0);
-            if (!Number.isFinite(b) || b <= 0) return '0 B';
-            const units = ['B', 'KB', 'MB', 'GB'];
-            const i = Math.min(units.length - 1, Math.floor(Math.log(b) / Math.log(1024)));
-            const v = b / Math.pow(1024, i);
-            return (v >= 10 || i === 0 ? v.toFixed(0) : v.toFixed(1)) + ' ' + units[i];
+        function stopPolling() {
+            if (pollTimer) {
+                clearInterval(pollTimer);
+                pollTimer = null;
+            }
         }
 
-        function formatDuration(seconds) {
-            if (seconds === null || seconds === undefined) return '';
-            const s = Math.max(0, Math.round(seconds));
-            const m = Math.floor(s / 60);
-            const r = s % 60;
-            if (m <= 0) return s + 's';
-            return m + 'm ' + r + 's';
-        }
+        function startPolling(tableName, runId) {
+            if ((!tableName && !runId) || !routeStatus) return;
+            stopPolling();
+            trackingStartAt = Date.now();
+            currentUploadTable = tableName;
+            currentUploadRunId = runId || '';
+            sessionStorage.setItem('pendingImportTable', tableName);
+            if (currentUploadRunId) sessionStorage.setItem('pendingImportRunId', currentUploadRunId);
+            sessionStorage.setItem('pendingImportAt', String(Date.now()));
+            showOverlay();
+            setProgress(1, 'Traitement côté serveur…', 'Import en cours…');
 
-        function extractErrorMessageFromXhr(xhr) {
-            const fallback = 'Erreur upload (HTTP ' + xhr.status + ').';
-            const raw = typeof xhr.responseText === 'string' ? xhr.responseText : '';
-            const ct = (xhr.getResponseHeader('Content-Type') || '').toLowerCase();
+            const statusUrl = currentUploadRunId
+                ? (routeStatus + '?run_id=' + encodeURIComponent(currentUploadRunId))
+                : (routeStatus + '?table=' + encodeURIComponent(tableName));
+            const runType = importTypeFromTable(tableName);
+            const spinner = document.getElementById('loadingSpinner');
 
-            if (ct.includes('application/json')) {
-                try {
-                    const payload = JSON.parse(raw || '{}');
-                    if (typeof payload?.message === 'string' && payload.message.trim()) {
-                        return payload.message.trim();
-                    }
-                    const errors = payload?.errors;
-                    if (errors && typeof errors === 'object') {
-                        for (const key of Object.keys(errors)) {
-                            const first = errors[key]?.[0];
-                            if (typeof first === 'string' && first.trim()) return first.trim();
+            const tick = () => {
+                fetch(statusUrl, { headers: { Accept: 'application/json' } })
+                    .then(r => {
+                        if (r.status === 401) {
+                            window.location.href = routeLogin;
+                            return null;
                         }
-                    }
-                } catch (e) {
-                    // no-op
-                }
-            }
+                        return r.ok ? r.json() : null;
+                    })
+                    .then(data => {
+                        if (!data) return;
+                        const status = data.status || 'running';
+                        const count = Number(data.count || 0);
+                        const total = Number(data.total || 0);
+                        const backendPercent = Number(data.percent || 0);
+                        let percent = backendPercent;
+                        if ((!percent || percent <= 0) && total > 0) {
+                            percent = Math.round((count / total) * 100);
+                        }
+                        // Single bar over whole process: upload ~20%, backend ~80%.
+                        const blendedPercent = Math.max(20, Math.min(99, Math.round(20 + (percent * 0.8))));
+                        const eta = etaFromHistory(runType, percent);
+                        const etaTxt = eta === null ? '' : ` • ETA historique ~ ${fmtDur(eta)}`;
+                        const lineTxt = total > 0 ? `Traitement: ${count} / ${total}${etaTxt}` : `Traitement en cours…${etaTxt}`;
+                        setProgress(blendedPercent, lineTxt, `Import… ${Math.round(blendedPercent)}%`);
 
-            if (ct.includes('text/html') && raw) {
-                const parser = new DOMParser();
-                const doc = parser.parseFromString(raw, 'text/html');
-                const alert = doc.querySelector('[role="alert"]');
-                if (alert && alert.textContent) {
-                    const txt = alert.textContent.replace(/\s+/g, ' ').trim();
-                    if (txt) return txt;
-                }
-                const li = doc.querySelector('li');
-                if (li && li.textContent) {
-                    const txt = li.textContent.replace(/\s+/g, ' ').trim();
-                    if (txt) return txt;
-                }
-            }
+                        if (status === 'failed' || data.error) {
+                            stopPolling();
+                            if (spinner) spinner.style.display = 'none';
+                            setProgress(percent, `Import échoué: ${data.error || 'Erreur inconnue'}`, 'Import échoué');
+                            return;
+                        }
+                        if (status === 'done') {
+                            stopPolling();
+                            if (spinner) spinner.style.display = 'none';
+                            const elapsed = Math.round((Date.now() - (trackingStartAt || Date.now())) / 1000);
+                            pushHistory(runType, elapsed);
+                            setProgress(100, 'Importation terminée avec succès.', 'Import terminé');
+                            const banner = document.getElementById('importSuccessBanner');
+                            if (banner) {
+                                banner.textContent = 'Importation terminée avec succès.';
+                                banner.classList.remove('hidden');
+                            }
+                            sessionStorage.removeItem('pendingImportTable');
+                            sessionStorage.removeItem('pendingImportRunId');
+                            sessionStorage.removeItem('pendingImportAt');
+                            hideOverlay();
+                            hideSticky();
+                            if (routeConsultation) window.scrollTo({ top: 0, behavior: 'smooth' });
+                        }
+                    })
+                    .catch(() => {});
+            };
 
-            return fallback;
+            tick();
+            pollTimer = setInterval(tick, 2500);
         }
 
-        let currentUploadTable = '';
-        let activePollInterval = null;
-        let importEventSource = null;
-
-        function setImportTrackingActive(active) {
-            const dock = document.getElementById('importCancelDock');
-            if (dock) dock.classList.toggle('hidden', !active);
-            document.body.classList.toggle('pb-40', !!active);
-        }
-
-        function stopImportPolling() {
-            if (activePollInterval) {
-                clearInterval(activePollInterval);
-                activePollInterval = null;
-            }
-        }
-
-        function stopImportSse() {
-            if (importEventSource) {
-                try { importEventSource.close(); } catch (e) { /* no-op */ }
-                importEventSource = null;
-            }
-        }
-
-        // AJAX upload with real progress (XHR upload.onprogress).
-        const importForm = document.getElementById('importForm');
         if (importForm) {
             importForm.addEventListener('submit', function (e) {
                 e.preventDefault();
-
-                const succBanner = document.getElementById('importSuccessBanner');
-                if (succBanner) {
-                    succBanner.classList.add('hidden');
-                    succBanner.textContent = '';
-                }
-
-                const overlay = document.getElementById('loadingOverlay');
-                const progressBar = document.getElementById('progressBar');
-                const progressText = document.getElementById('progressText');
-                const estimateDiv = document.getElementById('timeEstimate');
-                const infoText = document.getElementById('infoText');
                 const spinner = document.getElementById('loadingSpinner');
-
-                showOverlay();
-                setSteps('starting');
-                hideSticky();
-                setImportTrackingActive(true);
-
                 if (spinner) spinner.style.display = '';
-                if (progressBar) progressBar.style.width = '0%';
-                if (progressText) progressText.innerText = '0%';
-                if (infoText) infoText.innerText = 'Veuillez patienter, ne fermez pas la page.';
-                if (estimateDiv) estimateDiv.innerText = 'Upload en cours…';
-                const upMeta = document.getElementById('stepUploadMeta');
-                const upRight = document.getElementById('stepUploadRight');
-                const mapMeta = document.getElementById('stepMapMeta');
-                const mapRight = document.getElementById('stepMapRight');
-                const clMeta = document.getElementById('stepCleaningMeta');
-                const clRight = document.getElementById('stepCleaningRight');
-                const insMeta = document.getElementById('stepInsertingMeta');
-                const insRight = document.getElementById('stepInsertingRight');
-                if (upMeta) upMeta.innerText = 'En attente…';
-                if (upRight) upRight.innerText = '0%';
-                if (mapMeta) mapMeta.innerText = 'Analyse des colonnes…';
-                if (mapRight) mapRight.innerText = '—';
-                if (clMeta) clMeta.innerText = 'En attente…';
-                if (clRight) clRight.innerText = '0%';
-                if (insMeta) insMeta.innerText = 'En attente…';
-                if (insRight) insRight.innerText = '0%';
+                showOverlay();
+                setProgress(0, 'Upload en cours…', 'Upload…');
 
                 const fd = new FormData(importForm);
-                const xhr = new XMLHttpRequest();
-                // Fallback context in case flash session is not available after XHR redirects.
                 const p = String(fd.get('programme') || '').toUpperCase();
                 const r = String(fd.get('reseau') || '').toUpperCase();
                 const y = String(fd.get('annee') || '').trim();
-                if (p && r && y) {
-                    currentUploadTable = ('RES_' + p + '_' + r + '_' + y);
-                    sessionStorage.setItem('pendingImportTable', currentUploadTable);
-                }
-                sessionStorage.setItem('pendingImportAt', String(Date.now()));
+                currentUploadTable = (p && r && y) ? `RES_${p}_${r}_${y}` : '';
 
-                const startAt = Date.now();
-                let lastAt = startAt;
-                let lastLoaded = 0;
-
+                const xhr = new XMLHttpRequest();
                 xhr.open('POST', importForm.action, true);
                 xhr.setRequestHeader('X-Requested-With', 'XMLHttpRequest');
-
                 xhr.upload.onprogress = function (ev) {
                     if (!ev.lengthComputable) return;
-                    const pc = Math.max(0, Math.min(100, Math.round((ev.loaded / ev.total) * 100)));
-
-                    if (progressBar) progressBar.style.width = pc + '%';
-                    if (progressText) progressText.innerText = pc + '%';
-
-                    const now = Date.now();
-                    const dt = Math.max(1, now - lastAt) / 1000;
-                    const dBytes = Math.max(0, ev.loaded - lastLoaded);
-                    const speed = dBytes / dt; // bytes/s
-                    const remaining = Math.max(0, ev.total - ev.loaded);
-                    const eta = speed > 0 ? (remaining / speed) : null;
-
-                    lastAt = now;
-                    lastLoaded = ev.loaded;
-
-                    const etaTxt = eta === null ? '' : (' • ETA ~ ' + formatDuration(eta));
-                    const speedTxt = speed > 0 ? (' • ' + formatBytes(speed) + '/s') : '';
-                    if (estimateDiv) {
-                        estimateDiv.innerText =
-                            'Upload (' + pc + '%) • ' + formatBytes(ev.loaded) + ' / ' + formatBytes(ev.total) + speedTxt + etaTxt;
-                    }
-                    if (upMeta) upMeta.innerText = 'Upload (' + pc + '%)' + (eta === null ? '' : (' • ETA ~ ' + formatDuration(eta)));
-                    if (upRight) upRight.innerText = pc + '%';
-
-                    // Upload done, now backend is still validating headers before response.
-                    if (pc >= 100) {
-                        setSteps('mapping');
-                        if (estimateDiv) estimateDiv.innerText = "Upload terminé • Analyse entête côté serveur…";
-                        if (mapMeta) mapMeta.innerText = "Analyse des colonnes en cours…";
-                        if (mapRight) mapRight.innerText = "…";
-                    }
-
-                    const stickyBar = document.getElementById('stickyBar');
-                    const stickyText = document.getElementById('stickyText');
-                    if (stickyBar) stickyBar.style.width = pc + '%';
-                    if (stickyText) stickyText.innerText = 'Upload… ' + pc + '%';
+                    const pc = Math.round((ev.loaded / ev.total) * 100);
+                    const blended = Math.round(pc * 0.2);
+                    setProgress(blended, `Upload: ${pc}%`, `Upload… ${pc}%`);
                 };
-
                 xhr.onload = function () {
-                    // After upload finishes, backend may have redirected (mapping page or back to import).
-                    // We navigate to the final URL so normal polling logic resumes.
                     if (xhr.status === 401) {
                         window.location.href = routeLogin;
                         return;
                     }
-
+                    const ct = (xhr.getResponseHeader('Content-Type') || '').toLowerCase();
+                    const html = typeof xhr.responseText === 'string' ? xhr.responseText : '';
+                    const looksLikeMapping = ct.includes('text/html') && (
+                        html.includes('name="mapping[') ||
+                        html.includes("name='mapping[") ||
+                        html.toLowerCase().includes('import_mapping')
+                    );
+                    if (looksLikeMapping) {
+                        document.open(); document.write(html); document.close(); return;
+                    }
                     if (xhr.status >= 200 && xhr.status < 400) {
-                        if (estimateDiv) estimateDiv.innerText = 'Upload terminé. Préparation…';
-                        if (upMeta) upMeta.innerText = 'Terminé';
-                        if (upRight) upRight.innerText = '100%';
-                        setSteps('mapping');
-
-                        const ct = (xhr.getResponseHeader('Content-Type') || '').toLowerCase();
-                        const isJson = ct.includes('application/json');
-                        if (isJson) {
-                            let payload = null;
-                            try {
-                                payload = JSON.parse(xhr.responseText || '{}');
-                            } catch (e) {
-                                payload = null;
+                        let runId = '';
+                        try {
+                            const ct = (xhr.getResponseHeader('Content-Type') || '').toLowerCase();
+                            if (ct.includes('application/json')) {
+                                const payload = JSON.parse(xhr.responseText || '{}');
+                                runId = String(payload.run_id || '');
                             }
-
-                            if (!payload || payload.ok === false) {
-                                if (spinner) spinner.style.display = 'none';
-                                setSteps('failed');
-                                setImportTrackingActive(false);
-                                const msg = payload?.message || 'Réponse invalide du serveur pendant le démarrage de l\'import.';
-                                if (estimateDiv) estimateDiv.innerHTML = "<span class='text-red-600 font-bold'>" + msg + "</span>";
-                                showSticky();
-                                return;
-                            }
-
-                            const trackedTable = String(payload.table_name || currentUploadTable || sessionStorage.getItem('pendingImportTable') || '');
-                            if (trackedTable && typeof startPollingTracking === 'function') {
-                                sessionStorage.setItem('pendingImportTable', trackedTable);
-                                sessionStorage.setItem('pendingImportAt', String(Date.now()));
-                                startPollingTracking(trackedTable);
-                                return;
-                            }
-                        }
-
-                        const html = typeof xhr.responseText === 'string' ? xhr.responseText : '';
-                        const looksLikeHtml = ct.includes('text/html') && html.trim().startsWith('<');
-                        const looksLikeMapping = looksLikeHtml && (
-                            html.includes('name="mapping[') ||
-                            html.includes("name='mapping[") ||
-                            html.toLowerCase().includes('import_mapping')
-                        );
-
-                        // If manual mapping is required, render that page.
-                        if (looksLikeMapping) {
-                            setImportTrackingActive(false);
-                            document.open();
-                            document.write(html);
-                            document.close();
-                            return;
-                        }
-
-                        // Standard flow: keep this page and start polling immediately (avoid modal closing flicker).
-                        const tableName = currentUploadTable || sessionStorage.getItem('pendingImportTable') || '';
-                        if (tableName && typeof startPollingTracking === 'function') {
-                            // Keep state durable in case browser/page does an unexpected refresh.
-                            sessionStorage.setItem('pendingImportTable', tableName);
-                            sessionStorage.setItem('pendingImportAt', String(Date.now()));
-                            startPollingTracking(tableName);
-                            return;
-                        }
-
-                        // Keep modal visible with explicit message if table could not be resolved.
-                        if (estimateDiv) estimateDiv.innerHTML = "<span class='text-red-600 font-bold'>Impossible de démarrer le suivi (table introuvable).</span>";
-                        setSteps('failed');
-                        setImportTrackingActive(false);
+                        } catch (e) {}
+                        setProgress(20, 'Upload terminé. Lancement du traitement...', 'Traitement...');
+                        startPolling(currentUploadTable || importTableFromSession, runId);
                         return;
                     }
-
-                    // Error
-                    if (spinner) spinner.style.display = 'none';
-                    setSteps('failed');
-                    setImportTrackingActive(false);
-                    const msg = extractErrorMessageFromXhr(xhr);
-                    if (estimateDiv) estimateDiv.innerHTML = "<span class='text-red-600 font-bold'>" + msg + "</span>";
-                    showSticky();
+                    setProgress(0, 'Erreur upload.', 'Erreur upload');
                 };
-
                 xhr.onerror = function () {
-                    if (spinner) spinner.style.display = 'none';
-                    setSteps('failed');
-                    setImportTrackingActive(false);
-                    if (estimateDiv) estimateDiv.innerHTML = "<span class='text-red-600 font-bold'>Erreur réseau pendant l'upload.</span>";
-                    showSticky();
+                    setProgress(0, 'Erreur réseau pendant l’upload.', 'Erreur réseau');
                 };
-
                 xhr.send(fd);
             });
         }
 
-        const cfg = document.getElementById('importProgressConfig');
-        const importRunIdFromSession = cfg?.dataset?.runId || '';
-        const importTableFromSession = cfg?.dataset?.table || '';
-        // Robust fallback for XHR upload -> redirect chain where flash may be consumed.
-        const importRunId = importRunIdFromSession || (sessionStorage.getItem('pendingImportRunId') || '');
-        const importTable = importTableFromSession || (sessionStorage.getItem('pendingImportTable') || '');
-        // const routeEvents = cfg?.dataset?.eventsUrl || '';
-        // const routeStatus = cfg?.dataset?.statusUrl || '';
-        // const routeCancel = cfg?.dataset?.cancelUrl || '';
-        // const routeLogin = cfg?.dataset?.loginUrl || '/login';
-        // const routeConsultation = cfg?.dataset?.consultationUrl || '';
-        function getBasePath() {
-  const p = String(window.location.pathname || '/');
-  const idx = p.indexOf('/import');
-  return idx > 0 ? p.slice(0, idx) : '';
-}
+        const minBtn = document.getElementById('minimizeOverlayBtn');
+        const closeBtn = document.getElementById('closeOverlayBtn');
+        const openStickyBtn = document.getElementById('stickyOpenBtn');
+        const dismissStickyBtn = document.getElementById('stickyDismissBtn');
+        if (minBtn) minBtn.onclick = hideOverlay;
+        if (closeBtn) closeBtn.onclick = hideOverlay;
+        if (openStickyBtn) openStickyBtn.onclick = showOverlay;
+        if (dismissStickyBtn) dismissStickyBtn.onclick = hideSticky;
 
-function normalizeUrl(url) {
-  const u = String(url || '');
-  if (!u) return '';
-  if (/^https?:\/\//i.test(u)) return u;
-  if (!u.startsWith('/')) return u;
-
-  const base = getBasePath();
-  if (!base) return u;
-  if (u === base || u.startsWith(base + '/')) return u;
-
-  return base + u;
-}
-
-const routeEvents = normalizeUrl(cfg?.dataset?.eventsUrl || '');
-const routeStatus = normalizeUrl(cfg?.dataset?.statusUrl || '');
-const routeCancel = normalizeUrl(cfg?.dataset?.cancelUrl || '');
-const routeLogin = normalizeUrl(cfg?.dataset?.loginUrl || '/login');
-const routeConsultation = normalizeUrl(cfg?.dataset?.consultationUrl || '');
-
-        function clearPendingImport() {
-            sessionStorage.removeItem('pendingImportTable');
-            sessionStorage.removeItem('pendingImportRunId');
-            sessionStorage.removeItem('pendingImportAt');
+        // resume tracking after page reload
+        const pending = importTableFromSession || sessionStorage.getItem('pendingImportTable') || '';
+        const pendingRunId = sessionStorage.getItem('pendingImportRunId') || '';
+        if (pending || pendingRunId) {
+            startPolling(pending, pendingRunId);
         }
-
-        function getCsrfToken() {
-            const el = document.querySelector('input[name="_token"]');
-            return el?.value || '';
-        }
-
-        function requestCancel(tableName) {
-            if (!routeCancel || !tableName) return Promise.resolve(false);
-            const token = getCsrfToken();
-            return fetch(routeCancel, {
-                method: 'POST',
-                headers: {
-                    'Accept': 'application/json',
-                    'Content-Type': 'application/json',
-                    ...(token ? { 'X-CSRF-TOKEN': token } : {}),
-                },
-                body: JSON.stringify({ table: tableName }),
-            })
-            .then(r => r.ok ? r.json().catch(() => ({})) : Promise.reject(r))
-            .then(() => true)
-            .catch(() => false);
-        }
-
-        function isPendingImportRecent(maxAgeMs = 10 * 60 * 1000) {
-            const startedAt = Number(sessionStorage.getItem('pendingImportAt') || 0);
-            if (!Number.isFinite(startedAt) || startedAt <= 0) return false;
-            return (Date.now() - startedAt) <= maxAgeMs;
-        }
-
-        // Allow starting polling from upload handler without reloading.
-        function startPollingTracking(tableName) {
-            if (!tableName || !routeStatus) return;
-            stopImportPolling();
-
-            const statusUrl = routeStatus + "?table=" + encodeURIComponent(tableName);
-            const estimateDiv = document.getElementById('timeEstimate');
-            const progressBar = document.getElementById('progressBar');
-            const progressText = document.getElementById('progressText');
-            const spinner = document.getElementById('loadingSpinner');
-
-            showOverlay();
-            setImportTrackingActive(true);
-            // Ne pas afficher "Mappage entête" ici : le suivi concerne le job (nettoyage/insertion).
-            setSteps('cleaning');
-            if (document.getElementById('stepCleaningMeta')) {
-                document.getElementById('stepCleaningMeta').innerText = 'Connexion au suivi…';
-            }
-            if (document.getElementById('timeEstimate')) {
-                document.getElementById('timeEstimate').innerText = 'Connexion au suivi de l\'import…';
-            }
-
-            let isFinished = false;
-            let consecutiveFailures = 0;
-            const maxFailuresBeforeWarning = 3;
-
-            activePollInterval = setInterval(function() {
-                if (isFinished) return;
-
-                fetch(statusUrl, { headers: { 'Accept': 'application/json' } })
-                    .then(response => {
-                        if (response.status === 401) {
-                            window.location.href = routeLogin;
-                            return;
-                        }
-                        if (!response.ok) {
-                            throw new Error('Network response was not ok');
-                        }
-                        return response.text().then((txt) => {
-                            try {
-                                return JSON.parse(txt);
-                            } catch (e) {
-                                const err = new Error('Non-JSON response from status endpoint');
-                                err.raw = txt?.slice?.(0, 2000);
-                                throw err;
-                            }
-                        });
-                    })
-                    .then(data => {
-                        consecutiveFailures = 0;
-                        // Prefer backend stage-aware progress when available.
-                        let pc = Number.isFinite(data.overall_percent) ? data.overall_percent : (data.percent || 0);
-                        let count = data.count || 0;
-                        let total = data.total || '?';
-                        let status = data.status || 'running';
-                        let error = data.error || null;
-                        let stage = data.stage || '';
-                        let eta = data.eta_seconds ?? null;
-                        let stagePc = data.stage_percent ?? null;
-
-                        const etaTxt = eta === null ? '' : (" • ETA ~ " + eta + "s");
-                        if (status === 'idle') {
-                            setSteps('cleaning');
-                            if (estimateDiv) estimateDiv.innerText = "En attente du démarrage côté serveur…" + etaTxt;
-                            const clMeta = document.getElementById('stepCleaningMeta');
-                            if (clMeta) clMeta.innerText = "En attente…";
-                        } else if (stage === 'starting') {
-                            setSteps('cleaning');
-                            if (estimateDiv) estimateDiv.innerText = "Démarrage du traitement (nettoyage)…" + etaTxt;
-                            const clMeta = document.getElementById('stepCleaningMeta');
-                            if (clMeta) clMeta.innerText = "Préparation…";
-                        } else if (stage === 'cleaning') {
-                            setSteps('cleaning');
-                            const sp = stagePc === null ? '' : (" (" + stagePc + "%)");
-                            if (estimateDiv) estimateDiv.innerText = "Nettoyage" + sp + " • Lignes prêtes: " + count + etaTxt;
-                            const clMeta = document.getElementById('stepCleaningMeta');
-                            const clRight = document.getElementById('stepCleaningRight');
-                            if (clMeta) clMeta.innerText = "Lignes prêtes: " + count + etaTxt;
-                            if (clRight) clRight.innerText = (stagePc === null ? '—' : (stagePc + '%'));
-                        } else if (stage === 'inserting' || stage === 'done') {
-                            setSteps('inserting');
-                            if (estimateDiv) estimateDiv.innerText = "Insertion • Lignes: " + count + " / " + total + etaTxt;
-                            const insMeta = document.getElementById('stepInsertingMeta');
-                            const insRight = document.getElementById('stepInsertingRight');
-                            if (insMeta) insMeta.innerText = count + " / " + total + etaTxt;
-                            if (insRight) insRight.innerText = '—';
-                        } else {
-                            setSteps('cleaning');
-                            if (estimateDiv) estimateDiv.innerText = "Traitement en cours…" + etaTxt;
-                            const clMeta = document.getElementById('stepCleaningMeta');
-                            if (clMeta) clMeta.innerText = (stage || 'Étape') + "…";
-                        }
-
-                        const stickyBar = document.getElementById('stickyBar');
-                        const stickyText = document.getElementById('stickyText');
-                        if (stickyBar) stickyBar.style.width = pc + '%';
-                        if (stickyText) stickyText.innerText = "Import… " + count + " / " + total + " (" + pc + "%)";
-
-                        if (progressBar) progressBar.style.width = pc + '%';
-                        if (progressText) progressText.innerText = pc + '%';
-
-                        if (error || status === 'failed') {
-                             isFinished = true;
-                             clearPendingImport();
-                             if (spinner) spinner.style.display = 'none';
-                             setSteps('failed');
-                             if (estimateDiv) estimateDiv.innerHTML = "<span class='text-red-600 font-bold'>Import echoue : " + (error ?? "Erreur inconnue") + "</span>";
-                             stopImportPolling();
-                             setImportTrackingActive(false);
-                             hideOverlay();
-                             hideSticky();
-                             return;
-                        }
-
-                        if (status === 'cancelled') {
-                             isFinished = true;
-                             clearPendingImport();
-                             if (spinner) spinner.style.display = 'none';
-                             setSteps('failed');
-                             if (estimateDiv) estimateDiv.innerHTML = "<span class='text-red-600 font-bold'>Import annulé.</span>";
-                             hideSticky();
-                             stopImportPolling();
-                             setImportTrackingActive(false);
-                             hideOverlay();
-                             return;
-                        }
-
-                        if (status === 'done') {
-                             isFinished = true;
-                             clearPendingImport();
-                             if (spinner) spinner.style.display = 'none';
-                             setSteps('done');
-                             stopImportPolling();
-                             setImportTrackingActive(false);
-                             hideOverlay();
-                             hideSticky();
-                             const banner = document.getElementById('importSuccessBanner');
-                             if (banner) {
-                                 banner.textContent = 'Importation terminée avec succès.';
-                                 banner.classList.remove('hidden');
-                             }
-                             window.scrollTo({ top: 0, behavior: 'smooth' });
-                        }
-                    })
-                    .catch(err => {
-                        console.error(err);
-                        consecutiveFailures++;
-                        if (consecutiveFailures >= maxFailuresBeforeWarning && estimateDiv) {
-                            estimateDiv.innerHTML =
-                                "<span class='text-red-600 font-bold'>Suivi temporairement indisponible (" + consecutiveFailures + ").</span><br>" +
-                                "<span class='text-gray-600 text-sm'>On reessaie automatiquement... Vous pouvez reduire l'overlay.</span>";
-                        }
-                        showSticky();
-                    });
-            }, 2000);
-        }
-
-        // Check if we need to follow progress after redirect
-        if (importRunId && routeEvents) {
-            const sseUrl = routeEvents + "?runId=" + encodeURIComponent(importRunId);
-            const estimateDiv = document.getElementById('timeEstimate');
-            const overlay = document.getElementById('loadingOverlay');
-            const progressBar = document.getElementById('progressBar');
-            const progressText = document.getElementById('progressText');
-            const spinner = document.getElementById('loadingSpinner');
-
-            showOverlay();
-            setSteps('starting');
-            setImportTrackingActive(true);
-
-            let isFinished = false;
-            stopImportSse();
-            importEventSource = new EventSource(sseUrl);
-            const source = importEventSource;
-
-            source.addEventListener('progress', (event) => {
-                if (isFinished) return;
-
-                let data = {};
-                try {
-                    data = JSON.parse(event.data);
-                } catch (e) {
-                    console.error(e);
-                    return;
-                }
-
-                const overall = data.overall_percent ?? 0;
-                const stage = data.stage ?? 'running';
-                const stagePc = data.stage_percent ?? 0;
-                const processed = data.processed ?? 0;
-                const total = data.total ?? 0;
-                const status = data.status ?? 'running';
-                const error = data.error ?? null;
-                const eta = data.eta_seconds ?? null;
-
-                progressBar.style.width = overall + '%';
-                progressText.innerText = overall + '%';
-                const stickyBar = document.getElementById('stickyBar');
-                const stickyText = document.getElementById('stickyText');
-                if (stickyBar) stickyBar.style.width = overall + '%';
-                if (stickyText) stickyText.innerText = (stage === 'starting' ? 'Upload…' : 'Import…') + " (" + overall + "%)";
-
-                let stageLabel = stage;
-                if (stage === 'cleaning') stageLabel = 'Nettoyage';
-                if (stage === 'inserting') stageLabel = 'Insertion';
-                if (stage === 'starting') stageLabel = 'Upload';
-                if (stage === 'starting') setSteps('mapping');
-                if (stage === 'cleaning') setSteps('cleaning');
-                if (stage === 'inserting') setSteps('inserting');
-
-                const etaTxt = eta === null ? '' : (" • ETA ~ " + eta + "s");
-                if (stage === 'inserting') {
-                    estimateDiv.innerText = stageLabel + " (" + stagePc + "%)" + " • Lignes: " + processed + " / " + total + etaTxt;
-                    const insMeta = document.getElementById('stepInsertingMeta');
-                    const insRight = document.getElementById('stepInsertingRight');
-                    if (insMeta) insMeta.innerText = processed + " / " + total + etaTxt;
-                    if (insRight) insRight.innerText = stagePc + '%';
-                } else if (stage === 'cleaning') {
-                    estimateDiv.innerText = stageLabel + " (" + stagePc + "%)" + " • Lignes prêtes: " + processed + etaTxt;
-                    const clMeta = document.getElementById('stepCleaningMeta');
-                    const clRight = document.getElementById('stepCleaningRight');
-                    if (clMeta) clMeta.innerText = "Lignes prêtes: " + processed + etaTxt;
-                    if (clRight) clRight.innerText = stagePc + '%';
-                } else {
-                    estimateDiv.innerText = stageLabel + "..." + etaTxt;
-                }
-
-                if (error || status === 'failed') {
-                    isFinished = true;
-                    spinner.style.display = 'none';
-                    setSteps('failed');
-                    estimateDiv.innerHTML = "<span class='text-red-600 font-bold'>Import echoue : " + (error ?? "Erreur inconnue") + "</span>";
-                    setImportTrackingActive(false);
-                    hideOverlay();
-                    hideSticky();
-                    stopImportSse();
-                    return;
-                }
-
-                if (status === 'done') {
-                    isFinished = true;
-                    clearPendingImport();
-                    spinner.style.display = 'none';
-                    setSteps('done');
-                    setImportTrackingActive(false);
-                    hideOverlay();
-                    hideSticky();
-                    stopImportSse();
-                    const banner = document.getElementById('importSuccessBanner');
-                    if (banner) {
-                        banner.textContent = 'Importation terminée avec succès.';
-                        banner.classList.remove('hidden');
-                    }
-                    window.scrollTo({ top: 0, behavior: 'smooth' });
-                }
-            });
-
-            source.onerror = (err) => {
-                console.error(err);
-                estimateDiv.innerHTML = "<span class='text-red-600 font-bold'>Connexion au suivi SSE interrompue. Vous pouvez reduire l'overlay et reessayer (recharger la page).</span>";
-                showSticky();
-            };
-        } else if (importTable && routeStatus) {
-            // Fallback legacy polling (table-based)
-            startPollingTracking(importTable);
-        } else if (routeStatus) {
-            // If we only have a pending table from sessionStorage, validate status first.
-            const pendingTable = sessionStorage.getItem('pendingImportTable') || '';
-            if (pendingTable) {
-                const checkUrl = routeStatus + "?table=" + encodeURIComponent(pendingTable);
-                fetch(checkUrl, { headers: { 'Accept': 'application/json' } })
-                    .then(r => r.ok ? r.json() : null)
-                    .then(data => {
-                        if (!data) return;
-                        const st = data.status || 'idle';
-                        if (st === 'done') {
-                            clearPendingImport();
-                            return;
-                        }
-                        if (st === 'idle') {
-                            // Avoid dropping progress too early: cache may not be populated yet.
-                            if (isPendingImportRecent()) {
-                                startPollingTracking(pendingTable);
-                                return;
-                            }
-                            clearPendingImport();
-                            return;
-                        }
-                        startPollingTracking(pendingTable);
-                    })
-                    .catch(() => {
-                        // Silent fallback: do not force modal if we cannot validate pending state.
-                        if (isPendingImportRecent()) {
-                            startPollingTracking(pendingTable);
-                        }
-                    });
-            }
-        }
-
-        // Background/details UX wiring
-            const minimizeOverlayBtn = document.getElementById('minimizeOverlayBtn');
-            const closeOverlayBtn = document.getElementById('closeOverlayBtn');
-        const dockCancelImportBtn = document.getElementById('dockCancelImportBtn');
-        const stickyOpenBtn = document.getElementById('stickyOpenBtn');
-        const stickyCancelBtn = document.getElementById('stickyCancelBtn');
-        const stickyDismissBtn = document.getElementById('stickyDismissBtn');
-
-            if (minimizeOverlayBtn) minimizeOverlayBtn.onclick = hideOverlay;
-            if (closeOverlayBtn) closeOverlayBtn.onclick = hideOverlay;
-        if (stickyOpenBtn) stickyOpenBtn.onclick = showOverlay;
-        if (stickyDismissBtn) stickyDismissBtn.onclick = hideSticky;
-
-        const cancelButtons = [dockCancelImportBtn, stickyCancelBtn].filter(Boolean);
-        function cancelCurrentImport() {
-            const tableName = currentUploadTable || sessionStorage.getItem('pendingImportTable') || '';
-            if (!tableName) return;
-
-            cancelButtons.forEach(btn => {
-                btn.disabled = true;
-                btn.dataset.oldText = btn.innerText;
-                btn.innerText = 'Annulation...';
-            });
-
-            requestCancel(tableName).then((ok) => {
-                if (!ok) {
-                    cancelButtons.forEach(btn => {
-                        btn.disabled = false;
-                        btn.innerText = btn.dataset.oldText || "Annuler l'import";
-                        delete btn.dataset.oldText;
-                    });
-                    return;
-                }
-
-                clearPendingImport();
-                stopImportPolling();
-                stopImportSse();
-                setSteps('failed');
-                const estimateDiv = document.getElementById('timeEstimate');
-                const spinner = document.getElementById('loadingSpinner');
-                if (spinner) spinner.style.display = 'none';
-                if (estimateDiv) estimateDiv.innerHTML = "<span class='text-red-600 font-bold'>Import annulé.</span>";
-                setImportTrackingActive(false);
-                hideOverlay();
-                hideSticky();
-            });
-        }
-
-        if (dockCancelImportBtn) dockCancelImportBtn.onclick = cancelCurrentImport;
-        if (stickyCancelBtn) stickyCancelBtn.onclick = cancelCurrentImport;
     </script>
 @endsection

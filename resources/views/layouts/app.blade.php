@@ -42,6 +42,14 @@
                 <!-- Secondary Navbar items (User Menu) -->
                 <div class="hidden md:flex items-center space-x-3">
                     @auth
+                        @if(\App\Http\Controllers\StockImportController::hasFixableImportCache())
+                            <form action="{{ route('import.cache.fix') }}" method="POST" class="inline">
+                                @csrf
+                                <button type="submit" class="py-2 px-2 font-medium text-white bg-amber-600 rounded hover:bg-amber-500 transition duration-300">
+                                    Correction cache import
+                                </button>
+                            </form>
+                        @endif
                         <div class="text-green-100 text-sm text-right leading-tight">
                             <div class="font-bold">{{ Auth::user()->prenom }} {{ Auth::user()->nom }}</div>
                             <div class="text-xs opacity-75">{{ Auth::user()->matricule }}</div>

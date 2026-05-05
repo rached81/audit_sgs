@@ -34,9 +34,8 @@ Route::middleware(['auth', 'password_changed'])->group(function () {
     Route::get('/import', [StockImportController::class, 'showForm'])->name('import.form');
     Route::post('/import', [StockImportController::class, 'import'])->name('import.process');
     Route::post('/import/mapping', [StockImportController::class, 'processMappedImport'])->name('import.process_mapping');
-    Route::post('/import/cancel', [StockImportController::class, 'cancel'])->name('import.cancel');
     Route::get('/import/status', [StockImportController::class, 'checkStatus'])->name('import.status');
-    Route::get('/import/events', [StockImportController::class, 'events'])->name('import.events');
+    Route::post('/import/cache/fix', [StockImportController::class, 'fixImportCache'])->name('import.cache.fix');
 
     // Consultation
     Route::get('/consultation', [StockConsultationController::class, 'index'])->name('consultation.index');
