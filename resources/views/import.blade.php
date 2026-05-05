@@ -253,6 +253,29 @@
         }
         function hideSticky() { sticky?.classList.add('hidden'); }
 
+        function showErrorBanner(message) {
+            let banner = document.getElementById('importErrorBanner');
+            if (!banner) {
+                banner = document.createElement('div');
+                banner.id = 'importErrorBanner';
+                banner.className = 'mb-6 rounded-lg bg-red-100 border border-red-400 text-red-800 px-4 py-3 shadow';
+                banner.setAttribute('role', 'alert');
+                // Insert after the success banner or at the top of the content
+                const successBanner = document.getElementById('importSuccessBanner');
+                if (successBanner && successBanner.parentNode) {
+                    successBanner.parentNode.insertBefore(banner, successBanner.nextSibling);
+                } else {
+                    const content = document.querySelector('h1.text-3xl');
+                    if (content && content.parentNode) {
+                        content.parentNode.insertBefore(banner, content);
+                    }
+                }
+            }
+            banner.innerHTML = '<p class="font-bold">Erreur</p><p>' + message.replace(/</g, '&lt;').replace(/>/g, '&gt;') + '</p>';
+            banner.classList.remove('hidden');
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+        }
+
         function setProgress(percent, text, stickyText) {
             const p = Math.max(0, Math.min(100, Number(percent || 0)));
             const progressBar = document.getElementById('progressBar');
@@ -401,6 +424,14 @@
                             const ct = (xhr.getResponseHeader('Content-Type') || '').toLowerCase();
                             if (ct.includes('application/json')) {
                                 const payload = JSON.parse(xhr.responseText || '{}');
+                                if (payload.ok === false && payload.message) {
+                                    // Server returned a success HTTP status but logical error (shouldn't happen normally)
+                                    if (spinner) spinner.style.display = 'none';
+                                    setProgress(0, payload.message, 'Erreur');
+                                    showErrorBanner(payload.message);
+                                    hideOverlay();
+                                    return;
+                                }
                                 runId = String(payload.run_id || '');
                             }
                         } catch (e) {}
@@ -408,7 +439,26 @@
                         startPolling(currentUploadTable || importTableFromSession, runId);
                         return;
                     }
-                    setProgress(0, 'Erreur upload.', 'Erreur upload');
+
+                    // Handle 4xx/5xx errors (e.g. 422 validation failed, 500 server error)
+                    let errorMsg = 'Erreur lors de l\'import.';
+                    try {
+                        const ct = (xhr.getResponseHeader('Content-Type') || '').toLowerCase();
+                        if (ct.includes('application/json')) {
+                            const errPayload = JSON.parse(xhr.responseText || '{}');
+                            if (errPayload.message) {
+                                errorMsg = errPayload.message;
+                            } else if (errPayload.errors) {
+                                // Laravel validation errors format
+                                const allErrors = Object.values(errPayload.errors).flat();
+                                if (allErrors.length) errorMsg = allErrors.join(' ');
+                            }
+                        }
+                    } catch (e) {}
+                    if (spinner) spinner.style.display = 'none';
+                    setProgress(0, errorMsg, 'Erreur import');
+                    showErrorBanner(errorMsg);
+                    hideOverlay();
                 };
                 xhr.onerror = function () {
                     setProgress(0, 'Erreur réseau pendant l’upload.', 'Erreur réseau');

@@ -698,9 +698,37 @@ class StockImportController extends Controller
         sort($normalizedRequired);
 
         if ($normalizedFile !== $normalizedRequired) {
-            $requiredLabel = strtoupper(implode(', ', $requiredColumns));
-            $foundLabel = implode(', ', $fileHeaders);
-            $msg = "Entêtes invalides. Colonnes attendues (strictes, casse non sensible): {$requiredLabel}. Trouvées: {$foundLabel}";
+            $missing = array_diff($normalizedRequired, $normalizedFile);
+            $unexpected = array_diff($normalizedFile, $normalizedRequired);
+
+            // Map normalized back to original labels for display
+            $normalizedToRequired = [];
+            foreach ($requiredColumns as $c) {
+                $normalizedToRequired[$this->normalizeHeader($c)] = strtoupper($c);
+            }
+            $normalizedToFile = [];
+            foreach ($fileHeaders as $h) {
+                $n = $this->normalizeHeader((string) $h);
+                if ($n !== '' && !isset($normalizedToFile[$n])) {
+                    $normalizedToFile[$n] = (string) $h;
+                }
+            }
+
+            $parts = ['Entêtes invalides.'];
+
+            if (!empty($missing)) {
+                $missingLabels = array_map(fn($n) => '<strong>' . ($normalizedToRequired[$n] ?? strtoupper($n)) . '</strong>', $missing);
+                $parts[] = 'Colonnes manquantes : ' . implode(', ', $missingLabels) . '.';
+            }
+
+            if (!empty($unexpected)) {
+                $unexpectedLabels = array_map(fn($n) => '<strong>' . e($normalizedToFile[$n] ?? $n) . '</strong>', $unexpected);
+                $parts[] = 'Colonnes non reconnues : ' . implode(', ', $unexpectedLabels) . '.';
+            }
+
+            $parts[] = 'Colonnes attendues : ' . strtoupper(implode(', ', $requiredColumns)) . '.';
+
+            $msg = implode(' ', $parts);
             return [false, $msg];
         }
 
