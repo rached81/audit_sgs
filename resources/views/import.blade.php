@@ -252,6 +252,25 @@
             setMainFormInteractive(true);
         }
         function hideSticky() { sticky?.classList.add('hidden'); }
+        function closeImportUi() {
+            overlay?.classList.add('hidden');
+            sticky?.classList.add('hidden');
+            setMainFormInteractive(true);
+        }
+        function clearPendingImportState() {
+            sessionStorage.removeItem('pendingImportTable');
+            sessionStorage.removeItem('pendingImportRunId');
+            sessionStorage.removeItem('pendingImportAt');
+        }
+        function resetImportUiOnError(message) {
+            stopPolling();
+            const spinner = document.getElementById('loadingSpinner');
+            if (spinner) spinner.style.display = 'none';
+            setProgress(0, message || 'Import interrompu.', 'Erreur import');
+            closeImportUi();
+            clearPendingImportState();
+            showErrorBanner(message || 'Erreur lors de l\'import.');
+        }
 
         function showErrorBanner(message) {
             let banner = document.getElementById('importErrorBanner');
@@ -271,7 +290,24 @@
                     }
                 }
             }
-            banner.innerHTML = '<p class="font-bold">Erreur</p><p>' + message.replace(/</g, '&lt;').replace(/>/g, '&gt;') + '</p>';
+            const safeMessage = String(message || '')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/\n/g, '<br>');
+            banner.innerHTML =
+                '<div class="flex items-start justify-between gap-3">' +
+                    '<div class="min-w-0">' +
+                        '<p class="font-bold">Import bloque</p>' +
+                        '<p class="mt-1">' + safeMessage + '</p>' +
+                    '</div>' +
+                    '<button id="closeImportErrorBannerBtn" type="button" class="shrink-0 rounded bg-red-200 hover:bg-red-300 px-2 py-1 text-sm font-semibold" aria-label="Fermer le message">Fermer</button>' +
+                '</div>';
+            const closeBtn = document.getElementById('closeImportErrorBannerBtn');
+            if (closeBtn) {
+                closeBtn.onclick = function () {
+                    banner.classList.add('hidden');
+                };
+            }
             banner.classList.remove('hidden');
             window.scrollTo({ top: 0, behavior: 'smooth' });
         }
@@ -349,9 +385,7 @@
                         setProgress(blendedPercent, lineTxt, `Import… ${Math.round(blendedPercent)}%`);
 
                         if (status === 'failed' || data.error) {
-                            stopPolling();
-                            if (spinner) spinner.style.display = 'none';
-                            setProgress(percent, `Import échoué: ${data.error || 'Erreur inconnue'}`, 'Import échoué');
+                            resetImportUiOnError(data.error || 'Import echoue.');
                             return;
                         }
                         if (status === 'done') {
@@ -416,10 +450,7 @@
                                 const payload = JSON.parse(xhr.responseText || '{}');
                                 if (payload.ok === false && payload.message) {
                                     // Server returned a success HTTP status but logical error (shouldn't happen normally)
-                                    if (spinner) spinner.style.display = 'none';
-                                    setProgress(0, payload.message, 'Erreur');
-                                    showErrorBanner(payload.message);
-                                    hideOverlay();
+                                    resetImportUiOnError(payload.message);
                                     return;
                                 }
                                 runId = String(payload.run_id || '');
@@ -445,13 +476,10 @@
                             }
                         }
                     } catch (e) {}
-                    if (spinner) spinner.style.display = 'none';
-                    setProgress(0, errorMsg, 'Erreur import');
-                    showErrorBanner(errorMsg);
-                    hideOverlay();
+                    resetImportUiOnError(errorMsg);
                 };
                 xhr.onerror = function () {
-                    setProgress(0, 'Erreur réseau pendant l’upload.', 'Erreur réseau');
+                    resetImportUiOnError('Erreur reseau pendant l upload.');
                 };
                 xhr.send(fd);
             });

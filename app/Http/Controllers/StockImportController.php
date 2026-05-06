@@ -12,13 +12,11 @@ use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Facades\Response;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use PhpOffice\PhpSpreadsheet\IOFactory;
 use SplFileObject;
-use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class StockImportController extends Controller
 {
@@ -174,40 +172,6 @@ class StockImportController extends Controller
 
             return back()->withErrors(['file' => $e->getMessage()]);
         }
-    }
-
-    public function cancel(Request $request)
-    {
-        $request->validate([
-            'table' => 'required|string',
-        ]);
-
-        $tableName = (string) $request->input('table');
-        if (stripos($tableName, 'RES_') !== 0) {
-            abort(403, 'Action non autorisee.');
-        }
-
-        $ttlSeconds = 3600;
-        Cache::put("import_cancel_{$tableName}", true, $ttlSeconds);
-        Cache::put("import_status_{$tableName}", 'cancelled', $ttlSeconds);
-        Cache::put("import_error_{$tableName}", "Import annule par l'utilisateur.", $ttlSeconds);
-
-        $this->operationLogger->log([
-            'run_id' => (string) str()->uuid(),
-            'table_name' => $tableName,
-            'operation' => 'cancel_import',
-            'status' => 'success',
-            'user_id' => $request->user()?->id,
-            'user_matricule' => $request->user()?->matricule,
-            'user_name' => trim((string) (($request->user()?->prenom ?? '') . ' ' . ($request->user()?->nom ?? ''))) ?: null,
-            'ip_address' => $request->ip(),
-            'message' => 'Annulation demandee depuis l interface.',
-            'context' => [
-                'route' => $request->route()?->getName(),
-            ],
-        ]);
-
-        return response()->json(['ok' => true]);
     }
 
     public function fixImportCache(Request $request)
@@ -459,71 +423,6 @@ class StockImportController extends Controller
         }
     }
 
-    public function _events(Request $request): StreamedResponse
-    {
-        $runId = (string) $request->query('runId', '');
-        if ($runId === '') {
-            abort(400, 'Missing runId');
-        }
-
-        $key = "import_run_{$runId}";
-
-        return Response::stream(function () use ($key) {
-            @set_time_limit(0);
-
-            $lastJson = null;
-            $start = time();
-
-            while (true) {
-                $state = Cache::get($key);
-                if (!is_array($state)) {
-                    $state = [
-                        'status' => 'running',
-                        'stage' => 'starting',
-                        'overall_percent' => 0,
-                        'stage_percent' => 0,
-                        'processed' => 0,
-                        'total' => 0,
-                        'eta_seconds' => null,
-                        'updated_at' => time(),
-                    ];
-                }
-
-                $json = json_encode($state, JSON_UNESCAPED_SLASHES);
-                if ($json !== $lastJson) {
-                    echo "event: progress\n";
-                    echo "data: {$json}\n\n";
-                    $lastJson = $json;
-                } else {
-                    // keep-alive to avoid proxies closing the connection
-                    echo ": ping\n\n";
-                }
-
-                if (function_exists('ob_flush')) {
-                    @ob_flush();
-                }
-                @flush();
-
-                $status = (string) ($state['status'] ?? 'running');
-                if (in_array($status, ['done', 'failed'], true)) {
-                    break;
-                }
-
-                // safety: stop after 2 hours
-                if ((time() - $start) > 7200) {
-                    break;
-                }
-
-                usleep(750000); // ~0.75s
-            }
-        }, 200, [
-            'Content-Type' => 'text/event-stream',
-            'Cache-Control' => 'no-cache, no-store, must-revalidate',
-            'Connection' => 'keep-alive',
-            'X-Accel-Buffering' => 'no',
-        ]);
-    }
-
     public function checkStatus(Request $request)
     {
         $runId = (string) $request->input('run_id', '');
@@ -673,14 +572,15 @@ class StockImportController extends Controller
             foreach ($requiredColumns as $c) {
                 $normalizedToRequired[$this->normalizeHeader($c)] = strtoupper($c);
             }
-            $parts = ['Entêtes invalides.'];
+            $parts = ['En-tetes du fichier invalides.'];
 
             if (!empty($missing)) {
-                $missingLabels = array_map(fn($n) => '<strong>' . ($normalizedToRequired[$n] ?? strtoupper($n)) . '</strong>', $missing);
-                $parts[] = 'Colonnes manquantes : ' . implode(', ', $missingLabels) . '.';
+                $missingLabels = array_map(fn($n) => ($normalizedToRequired[$n] ?? strtoupper($n)), $missing);
+                $parts[] = 'Colonnes obligatoires non trouvees : ' . implode(', ', $missingLabels) . '.';
             }
 
             $parts[] = 'Colonnes attendues : ' . strtoupper(implode(', ', $requiredColumns)) . '.';
+            $parts[] = 'Corrigez les en-tetes du fichier puis relancez un nouvel import.';
 
             $msg = implode(' ', $parts);
             return [false, $msg];
