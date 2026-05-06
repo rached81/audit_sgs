@@ -21,11 +21,15 @@
 - Fuzzy faible (Levenshtein): `70`
 4. La ligne avec le score global le plus eleve devient la ligne d'entetes.
 
-## 4) Decision automatique vs validation manuelle
-1. Si tous les champs requis ont une confiance `>= 90`:
-- Import lance automatiquement.
-2. Sinon:
-- Affichage de la vue `import_mapping` pour validation/correction manuelle du mapping.
+## 4) Validation stricte des entetes
+1. Les entetes sont valides si toutes les colonnes attendues existent:
+- `ARTICLE`, `DESIGNATION`, `INITIAL`, `ENTREE`, `SORTIE`, `FINALE`, `PUMP`, `VALEUR`
+2. Regles de comparaison:
+- casse ignoree
+- accents ignores
+- colonnes supplementaires autorisees
+3. Si une colonne attendue manque:
+- import bloque avec un message d'erreur clair (pas de formulaire de mapping manuel).
 
 ## 5) Lancement du traitement asynchrone
 1. Le controleur appelle `doImport(...)`.
@@ -50,7 +54,6 @@
 - Pourcentage calcule et borne a `100`
 
 ## 8) Points d'extension
-- Ajouter de nouveaux synonymes dans `ColumnMapper::synonyms()`.
-- Ajuster la tolerance fuzzy/contains dans `ColumnMapper::mapHeaders()`.
 - Ajuster la fenetre de detection (`maxLines`) dans `FastHeaderDetector::detect()`.
+- Ajuster la validation stricte des entetes dans `StockImportController`.
 - Ajuster `IMPORT_NORMALIZE_CHUNK_SIZE` et `IMPORT_SQL_BATCH_SIZE` dans `config/import_perf.php`.

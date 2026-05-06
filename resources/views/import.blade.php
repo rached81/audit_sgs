@@ -408,16 +408,6 @@
                         window.location.href = routeLogin;
                         return;
                     }
-                    const ct = (xhr.getResponseHeader('Content-Type') || '').toLowerCase();
-                    const html = typeof xhr.responseText === 'string' ? xhr.responseText : '';
-                    const looksLikeMapping = ct.includes('text/html') && (
-                        html.includes('name="mapping[') ||
-                        html.includes("name='mapping[") ||
-                        html.toLowerCase().includes('import_mapping')
-                    );
-                    if (looksLikeMapping) {
-                        document.open(); document.write(html); document.close(); return;
-                    }
                     if (xhr.status >= 200 && xhr.status < 400) {
                         let runId = '';
                         try {

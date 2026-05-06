@@ -16,6 +16,8 @@ use Illuminate\Support\Facades\Response;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
+use PhpOffice\PhpSpreadsheet\IOFactory;
+use SplFileObject;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class StockImportController extends Controller
@@ -120,6 +122,14 @@ class StockImportController extends Controller
 
             [$strictOk, $strictMessage] = $this->validateStrictHeaders($fileHeaders, $requiredColumns);
             if (!$strictOk) {
+                $strictDetected = $this->findStrictHeaderRow($fullPath, $requiredColumns, 20);
+                if (is_array($strictDetected)) {
+                    $bestRowIndex = (int) ($strictDetected['row'] ?? $bestRowIndex);
+                    $fileHeaders = (array) ($strictDetected['headers'] ?? $fileHeaders);
+                    [$strictOk, $strictMessage] = $this->validateStrictHeaders($fileHeaders, $requiredColumns);
+                }
+            }
+            if (!$strictOk) {
                 Log::channel('import')->warning('import.controller.header.strict_validation_failed', [
                     'table' => $tableName,
                     'heading_row' => $bestRowIndex,
@@ -164,45 +174,6 @@ class StockImportController extends Controller
 
             return back()->withErrors(['file' => $e->getMessage()]);
         }
-    }
-
-    public function processMappedImport(Request $request)
-    {
-        $request->validate([
-            'file_path' => 'required|string',
-            'table_name' => 'required|string',
-            'mapping' => 'required|array',
-            'heading_row' => 'required|integer',
-            'run_id' => 'nullable|string',
-        ]);
-
-        $path = $request->input('file_path');
-        $tableName = $request->input('table_name');
-        $mapping = $request->input('mapping');
-        $headingRow = (int) $request->input('heading_row');
-        $runId = (string) ($request->input('run_id') ?: str()->uuid());
-        $fullPath = Storage::path($path);
-
-        Log::channel('import')->info('impmiort.controller.mapping.confirmed', [
-            'table' => $tableName,
-            'heading_row' => $headingRow,
-            'mapping' => $mapping,
-            'relative_path' => $path,
-            'full_path' => $fullPath,
-        ]);
-
-        if (!file_exists($fullPath)) {
-            Log::channel('import')->warning('import.controller.temp_file.missing', [
-                'table' => $tableName,
-                'relative_path' => $path,
-                'full_path' => $fullPath,
-            ]);
-
-            return redirect()->route('import.form')
-                ->withErrors(['file' => 'Le fichier temporaire a expire. Veuillez reessayer.']);
-        }
-
-        return $this->doImport($fullPath, $tableName, $mapping, $headingRow, $path, false, $runId, $request);
     }
 
     public function cancel(Request $request)
@@ -694,36 +665,19 @@ class StockImportController extends Controller
             $requiredColumns
         )));
 
-        sort($normalizedFile);
-        sort($normalizedRequired);
-
-        if ($normalizedFile !== $normalizedRequired) {
-            $missing = array_diff($normalizedRequired, $normalizedFile);
-            $unexpected = array_diff($normalizedFile, $normalizedRequired);
+        $missing = array_diff($normalizedRequired, $normalizedFile);
+        if (!empty($missing)) {
 
             // Map normalized back to original labels for display
             $normalizedToRequired = [];
             foreach ($requiredColumns as $c) {
                 $normalizedToRequired[$this->normalizeHeader($c)] = strtoupper($c);
             }
-            $normalizedToFile = [];
-            foreach ($fileHeaders as $h) {
-                $n = $this->normalizeHeader((string) $h);
-                if ($n !== '' && !isset($normalizedToFile[$n])) {
-                    $normalizedToFile[$n] = (string) $h;
-                }
-            }
-
             $parts = ['Entêtes invalides.'];
 
             if (!empty($missing)) {
                 $missingLabels = array_map(fn($n) => '<strong>' . ($normalizedToRequired[$n] ?? strtoupper($n)) . '</strong>', $missing);
                 $parts[] = 'Colonnes manquantes : ' . implode(', ', $missingLabels) . '.';
-            }
-
-            if (!empty($unexpected)) {
-                $unexpectedLabels = array_map(fn($n) => '<strong>' . e($normalizedToFile[$n] ?? $n) . '</strong>', $unexpected);
-                $parts[] = 'Colonnes non reconnues : ' . implode(', ', $unexpectedLabels) . '.';
             }
 
             $parts[] = 'Colonnes attendues : ' . strtoupper(implode(', ', $requiredColumns)) . '.';
@@ -750,6 +704,81 @@ class StockImportController extends Controller
             $mapping[$col] = $byNormalized[$this->normalizeHeader($col)] ?? $col;
         }
         return $mapping;
+    }
+
+    private function findStrictHeaderRow(string $fullPath, array $requiredColumns, int $maxLines = 20): ?array
+    {
+        $requiredNorm = array_values(array_unique(array_map(
+            fn(string $c) => $this->normalizeHeader($c),
+            $requiredColumns
+        )));
+        $ext = strtolower((string) pathinfo($fullPath, PATHINFO_EXTENSION));
+
+        if (in_array($ext, ['csv', 'txt'], true)) {
+            $file = new SplFileObject($fullPath, 'r');
+            $file->setFlags(SplFileObject::READ_CSV | SplFileObject::SKIP_EMPTY | SplFileObject::DROP_NEW_LINE);
+            $best = null;
+            $bestScore = -1;
+            $line = 0;
+            while (!$file->eof() && $line < $maxLines) {
+                $line++;
+                $row = $file->fgetcsv();
+                if (!is_array($row)) {
+                    continue;
+                }
+                $headers = array_values(array_filter(array_map(
+                    fn($v) => trim((string) ($v ?? '')),
+                    $row
+                ), fn($v) => $v !== ''));
+                if ($headers === []) {
+                    continue;
+                }
+                $norm = array_values(array_unique(array_map(fn($h) => $this->normalizeHeader($h), $headers)));
+                $score = count(array_intersect($requiredNorm, $norm));
+                if ($score > $bestScore) {
+                    $bestScore = $score;
+                    $best = ['row' => $line, 'headers' => $headers];
+                }
+                if ($score >= count($requiredNorm)) {
+                    return $best;
+                }
+            }
+            return $best;
+        }
+
+        $reader = IOFactory::createReaderForFile($fullPath);
+        $reader->setReadDataOnly(true);
+        $spreadsheet = $reader->load($fullPath);
+        $sheet = $spreadsheet->getSheet(0);
+        $highestColumn = $sheet->getHighestDataColumn();
+
+        $best = null;
+        $bestScore = -1;
+        for ($r = 1; $r <= $maxLines; $r++) {
+            $row = $sheet->rangeToArray("A{$r}:{$highestColumn}{$r}", null, true, false)[0] ?? [];
+            $headers = array_values(array_filter(array_map(
+                fn($v) => trim((string) ($v ?? '')),
+                $row
+            ), fn($v) => $v !== ''));
+            if ($headers === []) {
+                continue;
+            }
+            $norm = array_values(array_unique(array_map(fn($h) => $this->normalizeHeader($h), $headers)));
+            $score = count(array_intersect($requiredNorm, $norm));
+            if ($score > $bestScore) {
+                $bestScore = $score;
+                $best = ['row' => $r, 'headers' => $headers];
+            }
+            if ($score >= count($requiredNorm)) {
+                $spreadsheet->disconnectWorksheets();
+                unset($spreadsheet);
+                return $best;
+            }
+        }
+
+        $spreadsheet->disconnectWorksheets();
+        unset($spreadsheet);
+        return $best;
     }
 
     private function resolvePhpCliBinary(): string
