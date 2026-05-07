@@ -25,24 +25,77 @@ Notes sur la capture:
 - L'application redirige automatiquement vers la page **Connexion**.
 - Ce comportement est normal et confirme la protection middleware (`auth`).
 
-## 3) Parcours apres connexion (a valider avec un compte actif)
+## 3) Parcours superadmin valide
 
-Apres connexion reussie, verifier ce flux:
-1. Ouvrir `Import` et charger un fichier conforme.
-2. Ouvrir `Consultation` et verifier l'affichage d'une table.
-3. Ouvrir `Audit` et executer une comparaison.
-4. Ouvrir `Archive` pour verifier la liste des imports.
-5. Si profil super admin, ouvrir `Users`.
+Compte de test utilise:
+- Login: `19684`
+- Mot de passe: `19684`
+
+### 3.1 Ecran Import
+
+![Import superadmin](./screenshots/import-superadmin.png)
+
+Notes sur la capture:
+- Zone 1: menu principal complet (Importation, Consultation, Audit, Archive, Logs Import, Utilisateurs).
+- Zone 2: formulaire d'import (Exercice, Programme, Reseau, Fichier Excel).
+- Zone 3: bouton **Importer les Donnees** pour lancer le traitement.
+
+### 3.2 Ecran Consultation
+
+![Consultation superadmin](./screenshots/consultation-superadmin.png)
+
+Notes sur la capture:
+- Affiche les exercices et tables disponibles.
+- Les blocs **Comparaison EF vs GD** sont visibles par reseau.
+- Le bouton suppression de table est present pour profil admin/superadmin.
+
+### 3.3 Ecran Audit
+
+![Audit superadmin](./screenshots/audit-superadmin.png)
+
+Notes sur la capture:
+- Saisie de l'annee et selection du reseau.
+- Trois actions disponibles: **Stock Final et Valeur**, **Stock Initial**, **P.U.M.P**.
+- Lancer l'audit produit un export/resultat selon l'option choisie.
+
+### 3.4 Ecran Archive
+
+![Archive superadmin](./screenshots/archive-superadmin.png)
+
+Notes sur la capture:
+- Filtre par table disponible en haut de page.
+- Liste des fichiers originaux importes avec taille/date.
+- Action **Telecharger** disponible pour chaque ligne.
+
+### 3.5 Ecran Logs Import
+
+![Logs import superadmin](./screenshots/import-logs-superadmin.png)
+
+Notes sur la capture:
+- Historique des operations d'import (run id, table, operation, statut, utilisateur, ip, fichier).
+- Zone de filtre par `Run ID`, `Table`, `Operation`.
+- Ecran reserve au profil superadmin.
+
+### 3.6 Ecran Utilisateurs
+
+![Utilisateurs superadmin](./screenshots/users-superadmin.png)
+
+Notes sur la capture:
+- Liste complete des utilisateurs et profils (Super Admin, Administrateur, Utilisateur).
+- Action **+ Ajouter un utilisateur** en haut a droite.
+- Actions de maintenance (modifier/supprimer) disponibles sur la liste.
 
 ## 4) Checklist de verification rapide
 
-- [ ] `/login` repond en `200`.
-- [ ] `/` redirige vers `/login` si non connecte.
-- [ ] `/import` redirige vers `/login` si non connecte.
-- [ ] `/consultation` redirige vers `/login` si non connecte.
-- [ ] `/audit` redirige vers `/login` si non connecte.
-- [ ] `/archive` redirige vers `/login` si non connecte.
-- [ ] `/users` redirige vers `/login` si non connecte.
+- [x] `/login` repond en `200`.
+- [x] `/` redirige vers `/login` si non connecte.
+- [x] `/import` redirige vers `/login` si non connecte.
+- [x] `/consultation` redirige vers `/login` si non connecte.
+- [x] `/audit` redirige vers `/login` si non connecte.
+- [x] `/archive` redirige vers `/login` si non connecte.
+- [x] `/users` redirige vers `/login` si non connecte.
+- [x] `/import/logs` accessible avec compte superadmin.
+- [x] `/users` accessible avec compte superadmin.
 
 ## 5) Pre-requis techniques (local)
 
