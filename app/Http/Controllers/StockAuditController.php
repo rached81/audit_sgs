@@ -8,6 +8,21 @@ use Illuminate\Support\Facades\Schema;
 
 class StockAuditController extends Controller
 {
+    private function resolveTableName(string $tableName): ?string
+    {
+        $dbName = DB::getDatabaseName();
+        $rows = DB::select('SHOW TABLES');
+        $key = "Tables_in_{$dbName}";
+        foreach ($rows as $row) {
+            $candidate = $row->$key ?? reset($row);
+            if (is_string($candidate) && strcasecmp($candidate, $tableName) === 0) {
+                return $candidate;
+            }
+        }
+
+        return null;
+    }
+
     /**
      * Display the audit selection form.
      */
@@ -31,14 +46,16 @@ class StockAuditController extends Controller
         $reseau = strtoupper($request->input('reseau'));
         $type = $request->input('type', 'valeur');
 
-        $efTable = "RES_EF_{$reseau}_{$annee}";
-        $gdTable = "RES_GD_{$reseau}_{$annee}";
+        $efRequested = "RES_EF_{$reseau}_{$annee}";
+        $gdRequested = "RES_GD_{$reseau}_{$annee}";
+        $efTable = $this->resolveTableName($efRequested);
+        $gdTable = $this->resolveTableName($gdRequested);
 
-        if (!Schema::hasTable($efTable)) {
-            return back()->withErrors(['tables' => "La table EF '$efTable' est introuvable."]);
+        if ($efTable === null || !Schema::hasTable($efTable)) {
+            return back()->withErrors(['tables' => "La table EF '$efRequested' est introuvable."]);
         }
-        if (!Schema::hasTable($gdTable)) {
-            return back()->withErrors(['tables' => "La table GD '$gdTable' est introuvable."]);
+        if ($gdTable === null || !Schema::hasTable($gdTable)) {
+            return back()->withErrors(['tables' => "La table GD '$gdRequested' est introuvable."]);
         }
 
         // --- Ecart Calculation Expression ---
@@ -135,10 +152,12 @@ class StockAuditController extends Controller
         $reseau = strtoupper($request->input('reseau'));
         $type = $request->input('type', 'valeur');
 
-        $efTable = "RES_EF_{$reseau}_{$annee}";
-        $gdTable = "RES_GD_{$reseau}_{$annee}";
+        $efRequested = "RES_EF_{$reseau}_{$annee}";
+        $gdRequested = "RES_GD_{$reseau}_{$annee}";
+        $efTable = $this->resolveTableName($efRequested);
+        $gdTable = $this->resolveTableName($gdRequested);
 
-        if (!Schema::hasTable($efTable) || !Schema::hasTable($gdTable)) {
+        if ($efTable === null || $gdTable === null || !Schema::hasTable($efTable) || !Schema::hasTable($gdTable)) {
              return back()->withErrors(['tables' => "Tables introuvables pour l'export."]);
         }
 

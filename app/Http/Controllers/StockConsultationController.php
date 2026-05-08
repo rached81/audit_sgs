@@ -11,6 +11,21 @@ use Maatwebsite\Excel\Facades\Excel;
 
 class StockConsultationController extends Controller
 {
+    private function resolveTableName(string $tableName): ?string
+    {
+        $dbName = DB::getDatabaseName();
+        $rows = DB::select('SHOW TABLES');
+        $key = "Tables_in_{$dbName}";
+        foreach ($rows as $row) {
+            $candidate = $row->$key ?? reset($row);
+            if (is_string($candidate) && strcasecmp($candidate, $tableName) === 0) {
+                return $candidate;
+            }
+        }
+
+        return null;
+    }
+
     /**
      * Display a listing of the resource.
      */
@@ -164,13 +179,15 @@ class StockConsultationController extends Controller
      */
     public function show(Request $request, $tableName)
     {
+        $resolvedTableName = $this->resolveTableName((string) $tableName);
+
         // Security check
-        if (!Schema::hasTable($tableName) || stripos($tableName, 'RES_') !== 0) {
+        if ($resolvedTableName === null || stripos($resolvedTableName, 'RES_') !== 0) {
             abort(404, "Table not found or access denied.");
         }
 
-        $columns = Schema::getColumnListing($tableName);
-        $query = DB::table($tableName);
+        $columns = Schema::getColumnListing($resolvedTableName);
+        $query = DB::table($resolvedTableName);
 
         // Advanced Filtering
         $operators = $request->input('operators', []);
@@ -204,7 +221,7 @@ class StockConsultationController extends Controller
         }
 
         // Grouping Logic
-        $isGdTable = stripos($tableName, 'GD') !== false;
+        $isGdTable = stripos($resolvedTableName, 'GD') !== false;
         
         // Calculate Totals BEFORE Pagination and Grouping modification (if possible)
         // Note: If grouped, totals should reflect the grouped result.
@@ -254,18 +271,20 @@ class StockConsultationController extends Controller
         // Pagination
         $rows = $query->paginate(50)->withQueryString();
 
+        $tableName = $resolvedTableName;
         return view('consultation.show', compact('tableName', 'rows', 'columns', 'isGdTable', 'totals'));
     }
 
     public function export(Request $request, $tableName)
     {
-       
-        if (!Schema::hasTable($tableName) || stripos($tableName, 'RES_') !== 0) {
+        $resolvedTableName = $this->resolveTableName((string) $tableName);
+
+        if ($resolvedTableName === null || stripos($resolvedTableName, 'RES_') !== 0) {
             abort(404, "Table not found or access denied.");
         }
 
-        $columns = Schema::getColumnListing($tableName);
-        $query = DB::table($tableName);
+        $columns = Schema::getColumnListing($resolvedTableName);
+        $query = DB::table($resolvedTableName);
 
         // Advanced Filtering
         $operators = $request->input('operators', []);
@@ -297,7 +316,7 @@ class StockConsultationController extends Controller
         }
         
         // Grouping Logic - Restricted to 'GD' tables
-        $isGdTable = stripos($tableName, 'GD') !== false;
+        $isGdTable = stripos($resolvedTableName, 'GD') !== false;
 
         if ($isGdTable && $request->boolean('group_by_article') && in_array('ARTICLE', $columns)) {
             $selects = ['ARTICLE'];
@@ -317,13 +336,15 @@ class StockConsultationController extends Controller
             $query->select($selects)->groupBy('ARTICLE');
         }
 
-        return Excel::download(new StockExport($query, $columns), "{$tableName}.xlsx");
+        return Excel::download(new StockExport($query, $columns), "{$resolvedTableName}.xlsx");
     }
 
     public function destroy($tableName)
     {
+        $resolvedTableName = $this->resolveTableName((string) $tableName);
+
         // Security: Ensure it's a valid generated table
-        if (stripos($tableName, 'RES_') !== 0) {
+        if ($resolvedTableName === null || stripos($resolvedTableName, 'RES_') !== 0) {
             abort(403, "Action non autorisée.");
         }
 
@@ -334,17 +355,17 @@ class StockConsultationController extends Controller
         $userName = trim((string) (($user?->prenom ?? '') . ' ' . ($user?->nom ?? '')));
 
         try {
-            Schema::dropIfExists($tableName);
+            Schema::dropIfExists($resolvedTableName);
             $logger->log([
                 'run_id' => $runId,
-                'table_name' => $tableName,
+                'table_name' => $resolvedTableName,
                 'operation' => 'delete_import_table',
                 'status' => 'success',
                 'user_id' => $user?->id,
                 'user_matricule' => $user?->matricule,
                 'user_name' => $userName !== '' ? $userName : null,
                 'ip_address' => $request->ip(),
-                'message' => "Suppression de la table d'import {$tableName} depuis Consultation.",
+                'message' => "Suppression de la table d'import {$resolvedTableName} depuis Consultation.",
                 'context' => [
                     'route' => $request->route()?->getName(),
                     'method' => $request->method(),
@@ -353,14 +374,14 @@ class StockConsultationController extends Controller
         } catch (\Throwable $e) {
             $logger->log([
                 'run_id' => $runId,
-                'table_name' => $tableName,
+                'table_name' => $resolvedTableName,
                 'operation' => 'delete_import_table',
                 'status' => 'failed',
                 'user_id' => $user?->id,
                 'user_matricule' => $user?->matricule,
                 'user_name' => $userName !== '' ? $userName : null,
                 'ip_address' => $request->ip(),
-                'message' => "Echec suppression table d'import {$tableName}: " . $e->getMessage(),
+                'message' => "Echec suppression table d'import {$resolvedTableName}: " . $e->getMessage(),
                 'context' => [
                     'route' => $request->route()?->getName(),
                     'method' => $request->method(),
@@ -369,9 +390,9 @@ class StockConsultationController extends Controller
             ]);
 
             return redirect()->route('consultation.index')
-                ->withErrors(['table' => "Impossible de supprimer la table '{$tableName}'."]);
+                ->withErrors(['table' => "Impossible de supprimer la table '{$resolvedTableName}'."]);
         }
 
-        return redirect()->route('consultation.index')->with('success', "La table '$tableName' a été supprimée avec succès.");
+        return redirect()->route('consultation.index')->with('success', "La table '$resolvedTableName' a été supprimée avec succès.");
     }
 }

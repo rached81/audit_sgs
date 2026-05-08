@@ -14,7 +14,9 @@ return new class extends Migration
             $table->string('table_name')->nullable()->index();
             $table->string('operation', 64)->index();
             $table->string('status', 32)->default('success');
-            $table->foreignId('user_id')->nullable()->constrained()->nullOnDelete();
+            // Keep nullable user reference without FK to support legacy/provisioned user tables
+            // where users.id may be missing PK/AI constraints.
+            $table->unsignedBigInteger('user_id')->nullable()->index();
             $table->string('user_matricule')->nullable();
             $table->string('user_name')->nullable();
             $table->string('ip_address', 64)->nullable();

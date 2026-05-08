@@ -10,6 +10,22 @@ class ImportArchiveController extends Controller
 {
     private const BASE_DIR = 'import_debug';
 
+    private function resolveArchiveTableDir(string $table): ?string
+    {
+        if (!Storage::exists(self::BASE_DIR)) {
+            return null;
+        }
+
+        foreach (Storage::directories(self::BASE_DIR) as $dir) {
+            $name = basename($dir);
+            if (strcasecmp($name, $table) === 0) {
+                return $name;
+            }
+        }
+
+        return null;
+    }
+
     public function index(Request $request)
     {
         $tableFilter = trim((string) $request->query('table', ''));
@@ -85,7 +101,12 @@ class ImportArchiveController extends Controller
             abort(404);
         }
 
-        $path = self::BASE_DIR . '/' . $table . '/' . $runId . '/' . $filename;
+        $resolvedTable = $this->resolveArchiveTableDir($table);
+        if ($resolvedTable === null) {
+            abort(404);
+        }
+
+        $path = self::BASE_DIR . '/' . $resolvedTable . '/' . $runId . '/' . $filename;
         if (!Storage::exists($path)) {
             abort(404);
         }
