@@ -19,6 +19,7 @@
 /public/storage
 /storage/*.key
 /storage/pail
+/resources/.cursorrules
 /vendor
 Homestead.json
 Homestead.yaml
